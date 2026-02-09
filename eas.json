@@ -1,0 +1,42 @@
+{
+  "cli": {
+    "version": ">= 5.0.0",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "ios": {
+        "simulator": true
+      },
+      "env": {
+        "EXPO_PUBLIC_CONVEX_URL": "https://beloved-seahorse-967.convex.cloud",
+        "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY": "pk_test_51Sz26wEwHn24jnPYT6eqEcWz4zcFzwmdaMNXfijbPFXMzKhKGnsmxLE5j58mZfQaRZfKNXBvOt1hJx81z9Na2UDI00Wtw2vleh",
+        "EXPO_PUBLIC_FIREBASE_API_KEY": "AIzaSyB1y5vssdQDUKzT4PepklaEPYv3l4S6sfc",
+        "EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN": "lockdigit-421eb.firebaseapp.com",
+        "EXPO_PUBLIC_FIREBASE_PROJECT_ID": "lockdigit-421eb"
+      }
+    },
+    "development-device": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_CONVEX_URL": "https://beloved-seahorse-967.convex.cloud",
+        "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY": "pk_test_51Sz26wEwHn24jnPYT6eqEcWz4zcFzwmdaMNXfijbPFXMzKhKGnsmxLE5j58mZfQaRZfKNXBvOt1hJx81z9Na2UDI00Wtw2vleh",
+        "EXPO_PUBLIC_FIREBASE_API_KEY": "AIzaSyB1y5vssdQDUKzT4PepklaEPYv3l4S6sfc",
+        "EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN": "lockdigit-421eb.firebaseapp.com",
+        "EXPO_PUBLIC_FIREBASE_PROJECT_ID": "lockdigit-421eb"
+      }
+    },
+    "preview": {
+      "distribution": "internal"
+    },
+    "production": {
+      "autoIncrement": true
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+}
