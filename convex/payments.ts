@@ -1,0 +1,166 @@
+import { v } from "convex/values";
+import { action, mutation, query } from "./_generated/server";
+import { api } from "./_generated/api";
+
+export const createTransaction = mutation({
+  args: {
+    userId: v.id("users"),
+    type: v.union(
+      v.literal("payment"),
+      v.literal("scan_to_pay"),
+      v.literal("bill_payment")
+    ),
+    amount: v.number(),
+    merchantName: v.optional(v.string()),
+    description: v.string(),
+    stripePaymentIntentId: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db.insert("transactions", {
+      ...args,
+      status: "pending",
+      createdAt: Date.now(),
+    });
+  },
+});
+
+export const updateTransactionStatus = mutation({
+  args: {
+    transactionId: v.id("transactions"),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("completed"),
+      v.literal("failed")
+    ),
+    stripePaymentIntentId: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const { transactionId, ...updates } = args;
+    const filteredUpdates = Object.fromEntries(
+      Object.entries(updates).filter(([, v]) => v !== undefined)
+    );
+    await ctx.db.patch(transactionId, filteredUpdates);
+  },
+});
+
+export const getTransactionsByUser = query({
+  args: { userId: v.id("users") },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("transactions")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .order("desc")
+      .take(50);
+  },
+});
+
+export const getRecentTransactions = query({
+  args: {
+    userId: v.id("users"),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("transactions")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .order("desc")
+      .take(args.limit ?? 10);
+  },
+});
+
+// Stripe Payment Intent creation via server action
+export const createPaymentIntent = action({
+  args: {
+    amount: v.number(),
+    currency: v.optional(v.string()),
+    userId: v.id("users"),
+    description: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+    if (!stripeSecretKey) {
+      throw new Error("STRIPE_SECRET_KEY not configured");
+    }
+
+    const response = await fetch("https://api.stripe.com/v1/payment_intents", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${stripeSecretKey}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({
+        amount: args.amount.toString(),
+        currency: args.currency || "usd",
+        "automatic_payment_methods[enabled]": "true",
+        description: args.description,
+        "metadata[userId]": args.userId,
+      }).toString(),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Stripe error: ${error}`);
+    }
+
+    const paymentIntent = await response.json();
+
+    // Create a pending transaction record
+    await ctx.runMutation(api.payments.createTransaction, {
+      userId: args.userId,
+      type: "payment",
+      amount: args.amount,
+      description: args.description,
+      stripePaymentIntentId: paymentIntent.id,
+    });
+
+    return {
+      clientSecret: paymentIntent.client_secret,
+      paymentIntentId: paymentIntent.id,
+    };
+  },
+});
+
+// Bank accounts
+export const listBankAccounts = query({
+  args: { userId: v.id("users") },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("bankAccounts")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .collect();
+  },
+});
+
+export const addBankAccount = mutation({
+  args: {
+    userId: v.id("users"),
+    bankName: v.string(),
+    accountLast4: v.string(),
+    stripePaymentMethodId: v.optional(v.string()),
+    isDefault: v.boolean(),
+  },
+  handler: async (ctx, args) => {
+    // If setting as default, unset other defaults
+    if (args.isDefault) {
+      const existing = await ctx.db
+        .query("bankAccounts")
+        .withIndex("by_user", (q) => q.eq("userId", args.userId))
+        .collect();
+
+      for (const account of existing) {
+        if (account.isDefault) {
+          await ctx.db.patch(account._id, { isDefault: false });
+        }
+      }
+    }
+
+    return await ctx.db.insert("bankAccounts", args);
+  },
+});
+
+export const removeBankAccount = mutation({
+  args: { accountId: v.id("bankAccounts") },
+  handler: async (ctx, args) => {
+    await ctx.db.delete(args.accountId);
+  },
+});
