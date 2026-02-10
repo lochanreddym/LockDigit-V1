@@ -11,7 +11,7 @@ import { useRouter } from "expo-router";
 import { CameraView, useCameraPermissions, BarcodeScanningResult } from "expo-camera";
 import { Ionicons } from "@expo/vector-icons";
 import { useAction, useMutation } from "convex/react";
-import { useConfirmPayment } from "@stripe/stripe-react-native";
+import { useConfirmPayment } from "@/lib/stripe-native";
 import { api } from "@/convex/_generated/api";
 import { ScreenWrapper } from "@/components/common";
 import { GlassCard, GlassButton } from "@/components/glass";

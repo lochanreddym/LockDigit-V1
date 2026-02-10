@@ -2,7 +2,7 @@ import "../global.css";
 import React, { useEffect } from "react";
 import { Stack } from "expo-router";
 import { ConvexProvider, ConvexReactClient } from "convex/react";
-import { StripeProvider } from "@stripe/stripe-react-native";
+import { StripeProvider } from "@/lib/stripe-native";
 import { StatusBar } from "expo-status-bar";
 import * as SplashScreen from "expo-splash-screen";
 import { useAppStateLock } from "@/hooks/useAppState";

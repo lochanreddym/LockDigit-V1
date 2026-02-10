@@ -3,7 +3,7 @@ import { View, Text, ScrollView, Alert } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery, useMutation, useAction } from "convex/react";
-import { useConfirmPayment } from "@stripe/stripe-react-native";
+import { useConfirmPayment } from "@/lib/stripe-native";
 import { api } from "@/convex/_generated/api";
 import { ScreenWrapper, Header } from "@/components/common";
 import { GlassCard, GlassButton } from "@/components/glass";
