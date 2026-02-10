@@ -1,12 +1,19 @@
 import React, { useState } from "react";
-import { View, Text, ScrollView, Alert } from "react-native";
+import {
+  View,
+  Text,
+  ScrollView,
+  Alert,
+  TouchableOpacity,
+  StyleSheet,
+} from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery, useMutation, useAction } from "convex/react";
 import { useConfirmPayment } from "@/lib/stripe-native";
 import { api } from "@/convex/_generated/api";
-import { ScreenWrapper, Header } from "@/components/common";
-import { GlassCard, GlassButton } from "@/components/glass";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { GlassButton } from "@/components/glass";
 import { formatCurrency, formatDate, getDaysUntil } from "@/lib/utils";
 import { useAuthStore } from "@/hooks/useAuth";
 import { Id } from "@/convex/_generated/dataModel";
@@ -28,12 +35,19 @@ export default function BillDetailScreen() {
 
   if (!bill) {
     return (
-      <ScreenWrapper>
-        <Header title="Bill Details" showBack />
-        <View className="flex-1 items-center justify-center">
-          <Text className="text-white/50">Loading bill...</Text>
-        </View>
-      </ScreenWrapper>
+      <View className="flex-1 bg-ios-bg">
+        <SafeAreaView className="flex-1">
+          <View className="flex-row items-center px-5 py-3 bg-white border-b border-ios-border">
+            <TouchableOpacity onPress={() => router.back()} className="mr-3 p-1">
+              <Ionicons name="chevron-back" size={24} color="#0A84FF" />
+            </TouchableOpacity>
+            <Text className="text-xl font-bold text-ios-dark">Bill Details</Text>
+          </View>
+          <View className="flex-1 items-center justify-center">
+            <Text className="text-ios-grey4">Loading bill...</Text>
+          </View>
+        </SafeAreaView>
+      </View>
     );
   }
 
@@ -44,7 +58,6 @@ export default function BillDetailScreen() {
 
     setPaying(true);
     try {
-      // Create a PaymentIntent via Convex
       const { clientSecret, paymentIntentId } = await createPaymentIntent({
         amount: bill.amount,
         currency: "usd",
@@ -52,7 +65,6 @@ export default function BillDetailScreen() {
         description: `Bill payment: ${bill.title}`,
       });
 
-      // Confirm the payment using Stripe SDK
       const { error } = await confirmPayment(clientSecret, {
         paymentMethodType: "Card",
       });
@@ -60,7 +72,6 @@ export default function BillDetailScreen() {
       if (error) {
         Alert.alert("Payment Failed", error.message);
       } else {
-        // Mark bill as paid
         await markPaid({
           billId,
           stripePaymentIntentId: paymentIntentId,
@@ -92,146 +103,172 @@ export default function BillDetailScreen() {
   };
 
   return (
-    <ScreenWrapper>
-      <Header
-        title="Bill Details"
-        showBack
-        rightAction={{
-          icon: "trash-outline",
-          onPress: handleDelete,
-        }}
-      />
+    <View className="flex-1 bg-ios-bg">
+      <SafeAreaView className="flex-1" edges={["top"]}>
+        {/* Header */}
+        <View className="flex-row items-center justify-between px-5 py-3 bg-white border-b border-ios-border">
+          <View className="flex-row items-center">
+            <TouchableOpacity onPress={() => router.back()} className="mr-3 p-1">
+              <Ionicons name="chevron-back" size={24} color="#0A84FF" />
+            </TouchableOpacity>
+            <Text className="text-xl font-bold text-ios-dark">Bill Details</Text>
+          </View>
+          <TouchableOpacity onPress={handleDelete} className="p-2">
+            <Ionicons name="trash-outline" size={24} color="#FF3B30" />
+          </TouchableOpacity>
+        </View>
 
-      <ScrollView
-        className="flex-1 px-5"
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 100 }}
-      >
-        {/* Amount Card */}
-        <GlassCard className="mb-5 items-center py-6">
-          <Text className="text-white/60 text-sm mb-1">Amount Due</Text>
-          <Text className="text-white text-4xl font-bold">
-            {formatCurrency(bill.amount)}
-          </Text>
-
-          {/* Status badge */}
+        <ScrollView
+          className="flex-1 px-5 pt-4"
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ paddingBottom: 100 }}
+        >
+          {/* Amount Card */}
           <View
-            className={`mt-3 px-4 py-1.5 rounded-full ${
-              bill.status === "paid"
-                ? "bg-success/20"
-                : bill.status === "overdue"
-                  ? "bg-danger/20"
-                  : "bg-warning/20"
-            }`}
+            className="bg-white rounded-3xl border border-ios-border items-center py-8 px-5 mb-5"
+            style={styles.cardShadow}
           >
-            <Text
-              className={`text-sm font-semibold capitalize ${
+            <Text className="text-ios-grey4 text-sm mb-1">Amount Due</Text>
+            <Text className="text-ios-dark text-4xl font-bold">
+              {formatCurrency(bill.amount)}
+            </Text>
+
+            {/* Status badge */}
+            <View
+              className={`mt-3 px-4 py-1.5 rounded-full ${
                 bill.status === "paid"
-                  ? "text-success"
+                  ? "bg-success/10"
                   : bill.status === "overdue"
-                    ? "text-danger"
-                    : "text-warning"
+                    ? "bg-danger/10"
+                    : "bg-warning/10"
               }`}
             >
-              {bill.status}
-            </Text>
-          </View>
-
-          {/* Due date warning */}
-          {bill.status !== "paid" && (
-            <View className="flex-row items-center mt-3">
-              <Ionicons
-                name="time-outline"
-                size={16}
-                color={
-                  daysUntil <= 0
-                    ? "#FF3D71"
-                    : daysUntil <= 3
-                      ? "#FFB300"
-                      : "rgba(255,255,255,0.5)"
-                }
-              />
               <Text
-                className={`ml-1.5 text-sm ${
-                  daysUntil <= 0
-                    ? "text-danger"
-                    : daysUntil <= 3
-                      ? "text-warning"
-                      : "text-white/50"
+                className={`text-sm font-semibold capitalize ${
+                  bill.status === "paid"
+                    ? "text-success"
+                    : bill.status === "overdue"
+                      ? "text-danger"
+                      : "text-warning"
                 }`}
               >
-                {daysUntil <= 0
-                  ? "Overdue"
-                  : daysUntil === 0
-                    ? "Due today"
-                    : `Due in ${daysUntil} day${daysUntil !== 1 ? "s" : ""}`}
+                {bill.status}
               </Text>
+            </View>
+
+            {/* Due date warning */}
+            {bill.status !== "paid" && (
+              <View className="flex-row items-center mt-3">
+                <Ionicons
+                  name="time-outline"
+                  size={16}
+                  color={
+                    daysUntil <= 0
+                      ? "#FF3B30"
+                      : daysUntil <= 3
+                        ? "#FF9500"
+                        : "#8E8E93"
+                  }
+                />
+                <Text
+                  className={`ml-1.5 text-sm ${
+                    daysUntil <= 0
+                      ? "text-danger"
+                      : daysUntil <= 3
+                        ? "text-warning"
+                        : "text-ios-grey4"
+                  }`}
+                >
+                  {daysUntil <= 0
+                    ? "Overdue"
+                    : daysUntil === 0
+                      ? "Due today"
+                      : `Due in ${daysUntil} day${daysUntil !== 1 ? "s" : ""}`}
+                </Text>
+              </View>
+            )}
+          </View>
+
+          {/* Bill Details */}
+          <View
+            className="bg-white rounded-3xl border border-ios-border p-5 mb-5"
+            style={styles.cardShadow}
+          >
+            <Text className="text-ios-dark font-semibold text-lg mb-4">
+              Details
+            </Text>
+            {[
+              { label: "Bill Name", value: bill.title },
+              { label: "Category", value: bill.category },
+              { label: "Due Date", value: formatDate(bill.dueDate) },
+              {
+                label: "Recurring",
+                value: bill.recurring
+                  ? `Yes (${bill.recurrenceInterval || "monthly"})`
+                  : "No",
+              },
+              ...(bill.paidAt
+                ? [{ label: "Paid On", value: formatDate(bill.paidAt) }]
+                : []),
+              {
+                label: "Created",
+                value: formatDate(bill.createdAt),
+              },
+            ].map((item) => (
+              <View
+                key={item.label}
+                className="flex-row items-center justify-between py-3 border-b border-ios-border"
+              >
+                <Text className="text-ios-grey4 text-sm">{item.label}</Text>
+                <Text className="text-ios-dark text-sm font-medium capitalize">
+                  {item.value}
+                </Text>
+              </View>
+            ))}
+          </View>
+
+          {/* Pay Button */}
+          {bill.status !== "paid" && (
+            <GlassButton
+              title={paying ? "Processing Payment..." : `Pay ${formatCurrency(bill.amount)}`}
+              onPress={handlePayBill}
+              loading={paying}
+              size="lg"
+              fullWidth
+              icon={<Ionicons name="card" size={20} color="#FFFFFF" />}
+              className="mb-4"
+            />
+          )}
+
+          {bill.status === "paid" && (
+            <View
+              className="bg-white rounded-3xl border border-ios-border p-4 mb-4"
+              style={styles.cardShadow}
+            >
+              <View className="flex-row items-center justify-center py-2">
+                <Ionicons
+                  name="checkmark-circle"
+                  size={24}
+                  color="#30D158"
+                />
+                <Text className="text-success font-semibold ml-2 text-lg">
+                  Paid Successfully
+                </Text>
+              </View>
             </View>
           )}
-        </GlassCard>
-
-        {/* Bill Details */}
-        <GlassCard className="mb-5">
-          <Text className="text-white font-semibold text-lg mb-4">
-            Details
-          </Text>
-          {[
-            { label: "Bill Name", value: bill.title },
-            { label: "Category", value: bill.category },
-            { label: "Due Date", value: formatDate(bill.dueDate) },
-            {
-              label: "Recurring",
-              value: bill.recurring
-                ? `Yes (${bill.recurrenceInterval || "monthly"})`
-                : "No",
-            },
-            ...(bill.paidAt
-              ? [{ label: "Paid On", value: formatDate(bill.paidAt) }]
-              : []),
-            {
-              label: "Created",
-              value: formatDate(bill.createdAt),
-            },
-          ].map((item) => (
-            <View
-              key={item.label}
-              className="flex-row items-center justify-between py-3 border-b border-white/5"
-            >
-              <Text className="text-white/50 text-sm">{item.label}</Text>
-              <Text className="text-white text-sm font-medium capitalize">
-                {item.value}
-              </Text>
-            </View>
-          ))}
-        </GlassCard>
-
-        {/* Pay Button */}
-        {bill.status !== "paid" && (
-          <GlassButton
-            title={paying ? "Processing Payment..." : `Pay ${formatCurrency(bill.amount)}`}
-            onPress={handlePayBill}
-            loading={paying}
-            size="lg"
-            icon={<Ionicons name="card" size={20} color="#FFFFFF" />}
-            className="mb-4"
-          />
-        )}
-
-        {bill.status === "paid" && (
-          <GlassCard className="mb-4">
-            <View className="flex-row items-center justify-center py-2">
-              <Ionicons
-                name="checkmark-circle"
-                size={24}
-                color="#00C853"
-              />
-              <Text className="text-success font-semibold ml-2 text-lg">
-                Paid Successfully
-              </Text>
-            </View>
-          </GlassCard>
-        )}
-      </ScrollView>
-    </ScreenWrapper>
+        </ScrollView>
+      </SafeAreaView>
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  cardShadow: {
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+});

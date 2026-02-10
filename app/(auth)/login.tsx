@@ -1,40 +1,100 @@
 import React, { useState } from "react";
-import { View, Text, TouchableOpacity, Alert, KeyboardAvoidingView, Platform } from "react-native";
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  TextInput,
+  StyleSheet,
+  Image,
+} from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { ScreenWrapper } from "@/components/common";
-import { GlassCard, GlassButton, GlassInput } from "@/components/glass";
+import { LinearGradient } from "expo-linear-gradient";
+import { SafeAreaView } from "react-native-safe-area-context";
+import Constants from "expo-constants";
 import { sendOTP } from "@/lib/firebase";
+
+const isIOSSimulator =
+  Platform.OS === "ios" && !Constants.isDevice;
+
+// Max digits allowed per country (no spaces/dashes; digits only)
+const COUNTRY_MAX_DIGITS: Record<string, number> = {
+  "+1": 10,   // USA
+  "+91": 10,  // India
+};
+const DEFAULT_MAX_DIGITS = 15;
+
+const SUPPORTED_COUNTRY_CODES = ["+1", "+91"] as const;
 
 export default function LoginScreen() {
   const router = useRouter();
   const [phone, setPhone] = useState("");
-  const [name, setName] = useState("");
-  const [isNewUser, setIsNewUser] = useState(false);
+  const [countryCode, setCountryCode] = useState("+1");
   const [loading, setLoading] = useState(false);
 
-  const handleContinue = async () => {
-    if (!phone || phone.length < 10) {
-      Alert.alert("Invalid Phone", "Please enter a valid phone number with country code.");
-      return;
-    }
+  const maxDigits = COUNTRY_MAX_DIGITS[countryCode] ?? DEFAULT_MAX_DIGITS;
 
-    if (isNewUser && !name.trim()) {
-      Alert.alert("Name Required", "Please enter your name to create an account.");
+  const setPhoneWithLimit = (value: string) => {
+    const digits = value.replace(/\D/g, "").slice(0, maxDigits);
+    setPhone(digits);
+  };
+
+  const cycleCountryCode = () => {
+    const idx = SUPPORTED_COUNTRY_CODES.indexOf(countryCode as typeof SUPPORTED_COUNTRY_CODES[number]);
+    const next = SUPPORTED_COUNTRY_CODES[(idx + 1) % SUPPORTED_COUNTRY_CODES.length];
+    setCountryCode(next);
+    // Trim phone if new country allows fewer digits
+    const newMax = COUNTRY_MAX_DIGITS[next] ?? DEFAULT_MAX_DIGITS;
+    setPhone((p) => p.replace(/\D/g, "").slice(0, newMax));
+  };
+
+  const isPhoneValid = () => {
+    const digits = phone.replace(/\D/g, "");
+    const required = COUNTRY_MAX_DIGITS[countryCode];
+    if (required !== undefined) return digits.length === required;
+    return digits.length >= 7;
+  };
+
+  const handleContinue = async () => {
+    if (!phone || !isPhoneValid()) {
+      const required = COUNTRY_MAX_DIGITS[countryCode];
+      const msg = required !== undefined
+        ? `Please enter a ${required}-digit ${countryCode === "+91" ? "Indian" : "US"} phone number.`
+        : "Please enter a valid phone number.";
+      Alert.alert("Invalid Phone", msg);
       return;
     }
 
     setLoading(true);
     try {
-      // Format phone number with + prefix if missing
-      const formattedPhone = phone.startsWith("+") ? phone : `+${phone}`;
+      const formattedPhone = `${countryCode}${phone}`;
+
+      if (isIOSSimulator) {
+        // Firebase Phone Auth can crash on iOS Simulator (reCAPTCHA/APNs). Skip native call and continue for testing.
+        router.push({
+          pathname: "/(auth)/verify",
+          params: {
+            phone: formattedPhone,
+            name: "",
+            isNewUser: "true",
+            simulatorTest: "true",
+          },
+        });
+        setLoading(false);
+        return;
+      }
+
       await sendOTP(formattedPhone);
       router.push({
         pathname: "/(auth)/verify",
         params: {
           phone: formattedPhone,
-          name: isNewUser ? name.trim() : "",
-          isNewUser: isNewUser ? "true" : "false",
+          name: "",
+          isNewUser: "true",
         },
       });
     } catch (error: any) {
@@ -49,104 +109,161 @@ export default function LoginScreen() {
   };
 
   return (
-    <ScreenWrapper>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        className="flex-1"
-      >
-        <View className="flex-1 px-6 justify-center">
-          {/* Logo */}
-          <View className="items-center mb-10">
-            <View className="w-20 h-20 rounded-2xl bg-primary items-center justify-center mb-4">
-              <Text className="text-white text-3xl font-bold">L</Text>
-            </View>
-            <Text className="text-white text-2xl font-bold">
-              Welcome to LockDigit
-            </Text>
-            <Text className="text-white/50 text-base mt-2 text-center">
-              Your secure digital identity wallet
-            </Text>
-          </View>
+    <View className="flex-1 bg-white">
+      <ScrollView className="flex-1" bounces={false}>
+        {/* Hero Section with Gradient */}
+        <LinearGradient
+          colors={["#0A84FF", "#5E5CE6", "#7C3AED"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.hero}
+        >
+          {/* Decorative shapes */}
+          <View className="absolute top-10 left-10 w-32 h-32 rounded-3xl bg-white/10 rotate-12" />
+          <View className="absolute top-32 right-16 w-24 h-24 rounded-2xl bg-white/5 -rotate-12" />
+          <View className="absolute bottom-16 left-1/4 w-40 h-40 rounded-3xl bg-white/10 rotate-45" />
 
-          {/* Form */}
-          <GlassCard className="mb-6">
-            {/* Toggle between login/signup */}
-            <View className="flex-row mb-6 bg-white/5 rounded-xl p-1">
-              <TouchableOpacity
-                onPress={() => setIsNewUser(false)}
-                className={`flex-1 py-2.5 rounded-lg ${!isNewUser ? "bg-primary" : ""}`}
-              >
-                <Text
-                  className={`text-center font-semibold ${
-                    !isNewUser ? "text-white" : "text-white/50"
-                  }`}
-                >
-                  Sign In
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => setIsNewUser(true)}
-                className={`flex-1 py-2.5 rounded-lg ${isNewUser ? "bg-primary" : ""}`}
-              >
-                <Text
-                  className={`text-center font-semibold ${
-                    isNewUser ? "text-white" : "text-white/50"
-                  }`}
-                >
-                  Sign Up
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            {isNewUser && (
-              <GlassInput
-                label="Full Name"
-                placeholder="Enter your full name"
-                value={name}
-                onChangeText={setName}
-                autoCapitalize="words"
-                icon={
-                  <Ionicons
-                    name="person-outline"
-                    size={20}
-                    color="rgba(255,255,255,0.5)"
-                  />
-                }
+          <SafeAreaView edges={["top"]}>
+            <View className="items-center pt-8 pb-12 px-5">
+              {/* Logo */}
+              <Image
+                source={require("@/assets/images/app-logo.png")}
+                style={styles.appIcon}
+                resizeMode="contain"
               />
-            )}
 
-            <GlassInput
-              label="Phone Number"
-              placeholder="+1 234 567 8900"
-              value={phone}
-              onChangeText={setPhone}
-              keyboardType="phone-pad"
-              autoComplete="tel"
-              icon={
+              <Text className="text-white text-3xl font-bold text-center">
+                LockDigit
+              </Text>
+              <Text className="text-white/80 text-base text-center mt-1">
+                Secure way to Store and Verify ID.
+              </Text>
+            </View>
+          </SafeAreaView>
+        </LinearGradient>
+
+        {/* Content Section */}
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+        >
+          <View className="bg-ios-bgAlt px-5 py-8 items-center">
+            <Text className="text-ios-darkAlt text-2xl font-bold mb-2 text-center">
+              Login or Create Account
+            </Text>
+            <Text className="text-ios-grey5 text-base mb-6 text-center">
+              Enter your mobile number to proceed
+            </Text>
+
+            {/* Phone Input */}
+            <View
+              className="flex-row items-center bg-white rounded-2xl px-5 py-4 border border-ios-borderLight mb-4 w-full self-stretch"
+              style={styles.inputShadow}
+            >
+              <TouchableOpacity
+                className="flex-row items-center mr-3"
+                onPress={cycleCountryCode}
+                activeOpacity={0.7}
+              >
+                <Text className="text-ios-darkAlt text-base">{countryCode}</Text>
                 <Ionicons
-                  name="call-outline"
-                  size={20}
-                  color="rgba(255,255,255,0.5)"
+                  name="chevron-down"
+                  size={16}
+                  color="#86868B"
+                  style={{ marginLeft: 4 }}
                 />
-              }
-            />
+              </TouchableOpacity>
+              <View className="w-px h-6 bg-ios-borderLight mr-3" />
+              <TextInput
+                placeholder={countryCode === "+91" ? "10-digit mobile number" : "10-digit phone number"}
+                value={phone}
+                onChangeText={setPhoneWithLimit}
+                keyboardType="phone-pad"
+                className="flex-1 text-ios-darkAlt text-base"
+                placeholderTextColor="#86868B"
+                maxLength={maxDigits}
+              />
+            </View>
 
-            <GlassButton
-              title={loading ? "Sending Code..." : "Continue"}
+            {/* Continue Button */}
+            <TouchableOpacity
               onPress={handleContinue}
-              loading={loading}
-              disabled={!phone || (isNewUser && !name.trim())}
-              size="lg"
-              className="mt-2"
-            />
-          </GlassCard>
+              disabled={loading || !isPhoneValid()}
+              className="bg-primary rounded-2xl py-4 mb-4 w-full self-stretch"
+              style={[
+                styles.buttonShadow,
+                (!isPhoneValid() || loading) && { opacity: 0.4 },
+              ]}
+              activeOpacity={0.8}
+            >
+              <Text className="text-white text-center font-semibold text-base">
+                {loading ? "Sending Code..." : "Continue"}
+              </Text>
+            </TouchableOpacity>
 
-          <Text className="text-white/30 text-xs text-center px-4">
-            By continuing, you agree to LockDigit's Terms of Service and Privacy
-            Policy. We'll send a verification code to your phone number.
+            {/* Terms */}
+            <Text className="text-ios-grey5 text-xs text-center mb-8 w-full self-stretch">
+              By continuing, I agree to{" "}
+              <Text className="text-primary">Terms of Service</Text>
+            </Text>
+
+            {/* Divider */}
+            <View className="flex-row items-center mb-8">
+              <View className="flex-1 h-px bg-ios-borderLight" />
+              <Text className="text-ios-grey5 text-xs mx-4">or</Text>
+              <View className="flex-1 h-px bg-ios-borderLight" />
+            </View>
+
+            {/* Alternative */}
+            <TouchableOpacity
+              className="mb-8"
+              onPress={() => router.push("/(auth)/identity-verification")}
+              activeOpacity={0.7}
+            >
+              <Text className="text-primary text-center text-base">
+                Try using Identity Verification
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+
+        {/* Footer */}
+        <View className="bg-ios-bgAlt px-5 pb-8">
+          <Text className="text-ios-grey5 text-xs text-center">
+            Facing Trouble -{" "}
+            <Text className="text-primary">Need Help?</Text>
           </Text>
         </View>
-      </KeyboardAvoidingView>
-    </ScreenWrapper>
+      </ScrollView>
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  hero: {
+    overflow: "hidden",
+  },
+  appIcon: {
+    width: 110,
+    height: 110,
+    borderRadius: 26,
+    marginBottom: 24,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.2,
+    shadowRadius: 16,
+  },
+  inputShadow: {
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.03,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  buttonShadow: {
+    shadowColor: "#0A84FF",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    elevation: 4,
+  },
+});

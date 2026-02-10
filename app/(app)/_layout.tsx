@@ -6,7 +6,7 @@ export default function AppLayout() {
     <Stack
       screenOptions={{
         headerShown: false,
-        contentStyle: { backgroundColor: "#0A0E1A" },
+        contentStyle: { backgroundColor: "#F2F2F7" },
         animation: "slide_from_right",
       }}
     >
@@ -18,6 +18,9 @@ export default function AppLayout() {
       <Stack.Screen name="document/[id]" />
       <Stack.Screen name="bill/[id]" />
       <Stack.Screen name="search" />
+      <Stack.Screen name="categories" />
+      <Stack.Screen name="payment-success" />
+      <Stack.Screen name="add-credential" />
     </Stack>
   );
 }

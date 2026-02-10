@@ -5,17 +5,18 @@ import {
   TouchableOpacity,
   Alert,
   Animated,
+  StyleSheet,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import { ScreenWrapper } from "@/components/common";
-import { GlassCard } from "@/components/glass";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { createPin, isPinValid } from "@/lib/pin-manager";
 import { getOrCreateDeviceFingerprint } from "@/lib/device-binding";
 import * as SecureStoreHelper from "@/lib/secure-store";
 import { useAuthStore } from "@/hooks/useAuth";
+import { LinearGradient } from "expo-linear-gradient";
 
 type PinLength = 4 | 6;
 
@@ -71,7 +72,6 @@ export default function CreatePinScreen() {
         const newPin = pin + digit;
         setPin(newPin);
         if (newPin.length === pinLength) {
-          // Validate the PIN
           const validation = isPinValid(newPin);
           if (!validation.valid) {
             shake();
@@ -116,13 +116,9 @@ export default function CreatePinScreen() {
   const handleCreatePin = async (finalPin: string) => {
     setLoading(true);
     try {
-      // Hash and store PIN locally
       const { hash, salt } = await createPin(finalPin);
-
-      // Get device fingerprint
       const deviceId = await getOrCreateDeviceFingerprint();
 
-      // Create user in Convex if new
       if (isNewUser === "true" && phone) {
         const userId = await createUser({
           name: name || "User",
@@ -136,13 +132,10 @@ export default function CreatePinScreen() {
         await SecureStoreHelper.setSetupComplete();
         setAuthenticated(userId, phone);
       } else {
-        // Existing user - just store locally
         await SecureStoreHelper.setSetupComplete();
       }
 
       setPinCreated();
-
-      // Navigate to home
       router.replace("/(app)/(tabs)/home");
     } catch (error: any) {
       console.error("PIN creation failed:", error);
@@ -168,8 +161,8 @@ export default function CreatePinScreen() {
       {Array.from({ length: pinLength }).map((_, i) => (
         <View
           key={i}
-          className={`w-4 h-4 rounded-full mx-2 ${
-            i < currentPin.length ? "bg-primary" : "bg-white/20"
+          className={`w-4 h-4 rounded-full mx-2.5 ${
+            i < currentPin.length ? "bg-primary" : "bg-ios-border"
           }`}
         />
       ))}
@@ -199,7 +192,7 @@ export default function CreatePinScreen() {
                   <Ionicons
                     name="backspace-outline"
                     size={28}
-                    color="#FFFFFF"
+                    color="#1C1C1E"
                   />
                 </TouchableOpacity>
               );
@@ -208,10 +201,11 @@ export default function CreatePinScreen() {
               <TouchableOpacity
                 key={key}
                 onPress={() => handleDigitPress(key)}
-                className="w-20 h-16 items-center justify-center rounded-2xl bg-white/5"
+                className="w-20 h-16 items-center justify-center rounded-2xl bg-white border border-ios-border"
+                style={styles.keyShadow}
                 activeOpacity={0.6}
               >
-                <Text className="text-white text-2xl font-semibold">
+                <Text className="text-ios-dark text-2xl font-semibold">
                   {key}
                 </Text>
               </TouchableOpacity>
@@ -224,128 +218,212 @@ export default function CreatePinScreen() {
 
   if (step === "choose_length") {
     return (
-      <ScreenWrapper>
-        <View className="flex-1 px-6 justify-center">
-          <View className="items-center mb-10">
-            <View className="w-20 h-20 rounded-full bg-primary/20 items-center justify-center mb-4">
-              <Ionicons name="lock-closed" size={40} color="#6C63FF" />
+      <View className="flex-1 bg-ios-bg">
+        <SafeAreaView className="flex-1">
+          {/* Header */}
+          <View className="flex-row items-center px-5 py-3">
+            <TouchableOpacity
+              onPress={() => router.back()}
+              className="mr-3 p-1"
+            >
+              <Ionicons name="chevron-back" size={24} color="#0A84FF" />
+            </TouchableOpacity>
+            <Text className="text-xl font-bold text-ios-dark">Create PIN</Text>
+          </View>
+
+          <View className="flex-1 px-5 justify-center">
+            <View className="items-center mb-10">
+              <LinearGradient
+                colors={["#0A84FF", "#5E5CE6"]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                className="w-20 h-20 rounded-full items-center justify-center mb-4"
+              >
+                <Ionicons name="lock-closed" size={40} color="#FFFFFF" />
+              </LinearGradient>
+              <Text className="text-ios-dark text-2xl font-bold">
+                Create Your PIN
+              </Text>
+              <Text className="text-ios-grey4 text-base mt-2 text-center">
+                Choose a PIN length for quick and secure access
+              </Text>
             </View>
-            <Text className="text-white text-2xl font-bold">
-              Create Your PIN
-            </Text>
-            <Text className="text-white/50 text-base mt-2 text-center">
-              Choose a PIN length for quick and secure access
-            </Text>
-          </View>
 
-          <View className="gap-4">
-            <TouchableOpacity
-              onPress={() => {
-                setPinLength(4);
-                setStep("enter");
-              }}
-            >
-              <GlassCard>
-                <View className="flex-row items-center">
-                  <View className="w-14 h-14 rounded-xl bg-primary/20 items-center justify-center mr-4">
-                    <Text className="text-primary text-xl font-bold">4</Text>
+            <View className="gap-4">
+              <TouchableOpacity
+                onPress={() => {
+                  setPinLength(4);
+                  setStep("enter");
+                }}
+              >
+                <View
+                  className="bg-white rounded-3xl border border-ios-border p-5"
+                  style={styles.cardShadow}
+                >
+                  <View className="flex-row items-center">
+                    <View className="w-14 h-14 rounded-xl bg-primary/10 items-center justify-center mr-4">
+                      <Text className="text-primary text-xl font-bold">4</Text>
+                    </View>
+                    <View className="flex-1">
+                      <Text className="text-ios-dark font-semibold text-base">
+                        4-Digit PIN
+                      </Text>
+                      <Text className="text-ios-grey4 text-sm mt-0.5">
+                        Quick access, good security
+                      </Text>
+                    </View>
+                    <Ionicons
+                      name="chevron-forward"
+                      size={20}
+                      color="#C7C7CC"
+                    />
                   </View>
-                  <View className="flex-1">
-                    <Text className="text-white font-semibold text-base">
-                      4-Digit PIN
-                    </Text>
-                    <Text className="text-white/50 text-sm mt-0.5">
-                      Quick access, good security
-                    </Text>
-                  </View>
-                  <Ionicons
-                    name="chevron-forward"
-                    size={20}
-                    color="rgba(255,255,255,0.3)"
-                  />
                 </View>
-              </GlassCard>
-            </TouchableOpacity>
+              </TouchableOpacity>
 
-            <TouchableOpacity
-              onPress={() => {
-                setPinLength(6);
-                setStep("enter");
-              }}
-            >
-              <GlassCard>
-                <View className="flex-row items-center">
-                  <View className="w-14 h-14 rounded-xl bg-secondary/20 items-center justify-center mr-4">
-                    <Text className="text-secondary text-xl font-bold">6</Text>
+              <TouchableOpacity
+                onPress={() => {
+                  setPinLength(6);
+                  setStep("enter");
+                }}
+              >
+                <View
+                  className="bg-white rounded-3xl border border-primary p-5"
+                  style={styles.cardShadow}
+                >
+                  <View className="flex-row items-center">
+                    <View className="w-14 h-14 rounded-xl bg-primary/10 items-center justify-center mr-4">
+                      <Text className="text-primary text-xl font-bold">6</Text>
+                    </View>
+                    <View className="flex-1">
+                      <Text className="text-ios-dark font-semibold text-base">
+                        6-Digit PIN
+                      </Text>
+                      <Text className="text-ios-grey4 text-sm mt-0.5">
+                        Maximum security, recommended
+                      </Text>
+                    </View>
+                    <View className="bg-primary/10 px-2 py-1 rounded-full mr-2">
+                      <Text className="text-primary text-xs font-medium">
+                        Recommended
+                      </Text>
+                    </View>
+                    <Ionicons
+                      name="chevron-forward"
+                      size={20}
+                      color="#C7C7CC"
+                    />
                   </View>
-                  <View className="flex-1">
-                    <Text className="text-white font-semibold text-base">
-                      6-Digit PIN
-                    </Text>
-                    <Text className="text-white/50 text-sm mt-0.5">
-                      Maximum security, recommended
-                    </Text>
-                  </View>
-                  <View className="bg-primary/20 px-2 py-1 rounded-full mr-2">
-                    <Text className="text-primary text-xs font-medium">
-                      Recommended
-                    </Text>
-                  </View>
-                  <Ionicons
-                    name="chevron-forward"
-                    size={20}
-                    color="rgba(255,255,255,0.3)"
-                  />
                 </View>
-              </GlassCard>
-            </TouchableOpacity>
+              </TouchableOpacity>
+            </View>
+
+            {/* Security Tips */}
+            <View
+              className="bg-white rounded-3xl border border-ios-border p-5 mt-6"
+              style={styles.cardShadow}
+            >
+              <View className="flex-row items-center mb-3">
+                <Ionicons name="shield-checkmark" size={20} color="#0A84FF" />
+                <Text className="text-ios-dark font-semibold text-sm ml-2">
+                  Security Tips
+                </Text>
+              </View>
+              <Text className="text-ios-grey4 text-sm leading-5">
+                • Don't use sequential numbers (1234){"\n"}
+                • Avoid repeated digits (1111){"\n"}
+                • Don't share your PIN with anyone{"\n"}
+                • Use a unique PIN not used elsewhere
+              </Text>
+            </View>
           </View>
-        </View>
-      </ScreenWrapper>
+        </SafeAreaView>
+      </View>
     );
   }
 
   return (
-    <ScreenWrapper>
-      <View className="flex-1 justify-center">
+    <View className="flex-1 bg-ios-bg">
+      <SafeAreaView className="flex-1">
         {/* Header */}
-        <View className="items-center mb-8 px-6">
-          <View className="w-16 h-16 rounded-full bg-primary/20 items-center justify-center mb-4">
-            <Ionicons
-              name={step === "confirm" ? "checkmark-circle" : "lock-closed"}
-              size={32}
-              color="#6C63FF"
-            />
-          </View>
-          <Text className="text-white text-xl font-bold">
-            {step === "enter" ? "Enter Your PIN" : "Confirm Your PIN"}
-          </Text>
-          <Text className="text-white/50 text-sm mt-2">
-            {step === "enter"
-              ? `Create a ${pinLength}-digit PIN`
-              : "Re-enter your PIN to confirm"}
+        <View className="flex-row items-center px-5 py-3">
+          <TouchableOpacity
+            onPress={() => {
+              if (step === "confirm") {
+                setConfirmPin("");
+                setStep("enter");
+                setPin("");
+              } else {
+                setPin("");
+                setStep("choose_length");
+              }
+            }}
+            className="mr-3 p-1"
+          >
+            <Ionicons name="chevron-back" size={24} color="#0A84FF" />
+          </TouchableOpacity>
+          <Text className="text-xl font-bold text-ios-dark">
+            {step === "enter" ? "Enter PIN" : "Confirm PIN"}
           </Text>
         </View>
 
-        {/* PIN dots */}
-        {renderPinDots()}
+        <View className="flex-1 justify-center">
+          {/* Header */}
+          <View className="items-center mb-8 px-6">
+            <View className="w-16 h-16 rounded-full bg-primary/10 items-center justify-center mb-4">
+              <Ionicons
+                name={step === "confirm" ? "checkmark-circle" : "lock-closed"}
+                size={32}
+                color="#0A84FF"
+              />
+            </View>
+            <Text className="text-ios-dark text-xl font-bold">
+              {step === "enter" ? "Enter Your PIN" : "Confirm Your PIN"}
+            </Text>
+            <Text className="text-ios-grey4 text-sm mt-2">
+              {step === "enter"
+                ? `Create a ${pinLength}-digit PIN`
+                : "Re-enter your PIN to confirm"}
+            </Text>
+          </View>
 
-        {/* Keypad */}
-        {renderKeypad()}
+          {/* PIN dots */}
+          {renderPinDots()}
 
-        {/* Change PIN length */}
-        {step === "enter" && (
-          <TouchableOpacity
-            onPress={() => {
-              setPin("");
-              setStep("choose_length");
-            }}
-            className="items-center mt-4"
-          >
-            <Text className="text-primary text-sm">Change PIN length</Text>
-          </TouchableOpacity>
-        )}
-      </View>
-    </ScreenWrapper>
+          {/* Keypad */}
+          {renderKeypad()}
+
+          {/* Change PIN length */}
+          {step === "enter" && (
+            <TouchableOpacity
+              onPress={() => {
+                setPin("");
+                setStep("choose_length");
+              }}
+              className="items-center mt-4"
+            >
+              <Text className="text-primary text-sm">Change PIN length</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      </SafeAreaView>
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  cardShadow: {
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  keyShadow: {
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.03,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+});

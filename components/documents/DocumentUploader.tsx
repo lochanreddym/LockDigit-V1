@@ -54,7 +54,7 @@ export function DocumentUploader({
   if (imageUri) {
     return (
       <View className="mb-4">
-        <Text className="text-sm text-white/70 mb-2 font-medium">{label}</Text>
+        <Text className="text-sm text-ios-dark mb-2 font-medium">{label}</Text>
         <View className="relative">
           <Image
             source={{ uri: imageUri }}
@@ -76,18 +76,18 @@ export function DocumentUploader({
 
   return (
     <View className="mb-4">
-      <Text className="text-sm text-white/70 mb-2 font-medium">{label}</Text>
+      <Text className="text-sm text-ios-dark mb-2 font-medium">{label}</Text>
       <TouchableOpacity onPress={showOptions} activeOpacity={0.7}>
         <GlassCard className="items-center py-8">
           <Ionicons
             name="cloud-upload-outline"
             size={40}
-            color="rgba(255, 255, 255, 0.4)"
+            color="#C7C7CC"
           />
-          <Text className="text-white/60 mt-3 text-sm">
+          <Text className="text-ios-grey4 mt-3 text-sm">
             Tap to upload or take a photo
           </Text>
-          <Text className="text-white/30 mt-1 text-xs">
+          <Text className="text-ios-grey3 mt-1 text-xs">
             Supports JPG, PNG
           </Text>
         </GlassCard>

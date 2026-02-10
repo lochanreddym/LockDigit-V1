@@ -7,13 +7,14 @@ import {
   TouchableOpacity,
   Alert,
   Dimensions,
+  StyleSheet,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery, useMutation, useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import { ScreenWrapper, Header } from "@/components/common";
-import { GlassCard, GlassButton } from "@/components/glass";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { GlassButton } from "@/components/glass";
 import { formatDate, getDaysUntil } from "@/lib/utils";
 import { Id } from "@/convex/_generated/dataModel";
 
@@ -33,12 +34,19 @@ export default function DocumentDetailScreen() {
 
   if (!document) {
     return (
-      <ScreenWrapper>
-        <Header title="Document" showBack />
-        <View className="flex-1 items-center justify-center">
-          <Text className="text-white/50">Loading document...</Text>
-        </View>
-      </ScreenWrapper>
+      <View className="flex-1 bg-ios-bg">
+        <SafeAreaView className="flex-1">
+          <View className="flex-row items-center px-5 py-3 bg-white border-b border-ios-border">
+            <TouchableOpacity onPress={() => router.back()} className="mr-3 p-1">
+              <Ionicons name="chevron-back" size={24} color="#0A84FF" />
+            </TouchableOpacity>
+            <Text className="text-xl font-bold text-ios-dark">Document</Text>
+          </View>
+          <View className="flex-1 items-center justify-center">
+            <Text className="text-ios-grey4">Loading document...</Text>
+          </View>
+        </SafeAreaView>
+      </View>
     );
   }
 
@@ -84,7 +92,7 @@ export default function DocumentDetailScreen() {
     } catch (error: any) {
       Alert.alert(
         "Extraction Failed",
-        "Could not extract data from this document. Please fill in the details manually."
+        "Could not extract data from this document."
       );
     } finally {
       setExtracting(false);
@@ -92,190 +100,231 @@ export default function DocumentDetailScreen() {
   };
 
   return (
-    <ScreenWrapper>
-      <Header
-        title={document.title}
-        showBack
-        rightAction={{
-          icon: "trash-outline",
-          onPress: handleDelete,
-        }}
-      />
-
-      <ScrollView
-        className="flex-1 px-5"
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 100 }}
-      >
-        {/* Document Image */}
-        <View className="mb-5">
-          {document.frontImageUrl && (
-            <View className="overflow-hidden rounded-2xl">
-              <Image
-                source={{
-                  uri: showFront
-                    ? document.frontImageUrl
-                    : document.backImageUrl || document.frontImageUrl,
-                }}
-                style={{ width: width - 40, height: (width - 40) * 0.63 }}
-                resizeMode="cover"
-                className="rounded-2xl"
-              />
-            </View>
-          )}
-          {document.backImageUrl && (
-            <View className="flex-row justify-center mt-3 gap-3">
-              <TouchableOpacity
-                onPress={() => setShowFront(true)}
-                className={`px-4 py-2 rounded-lg ${showFront ? "bg-primary" : "bg-white/10"}`}
-              >
-                <Text className="text-white text-sm">Front</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => setShowFront(false)}
-                className={`px-4 py-2 rounded-lg ${!showFront ? "bg-primary" : "bg-white/10"}`}
-              >
-                <Text className="text-white text-sm">Back</Text>
-              </TouchableOpacity>
-            </View>
-          )}
+    <View className="flex-1 bg-ios-bg">
+      <SafeAreaView className="flex-1" edges={["top"]}>
+        {/* Header */}
+        <View className="flex-row items-center justify-between px-5 py-3 bg-white border-b border-ios-border">
+          <View className="flex-row items-center flex-1">
+            <TouchableOpacity onPress={() => router.back()} className="mr-3 p-1">
+              <Ionicons name="chevron-back" size={24} color="#0A84FF" />
+            </TouchableOpacity>
+            <Text className="text-xl font-bold text-ios-dark" numberOfLines={1}>
+              {document.title}
+            </Text>
+          </View>
+          <TouchableOpacity onPress={handleDelete} className="p-2">
+            <Ionicons name="trash-outline" size={24} color="#FF3B30" />
+          </TouchableOpacity>
         </View>
 
-        {/* Verification Status */}
-        <GlassCard className="mb-4">
-          <View className="flex-row items-center">
-            <View
-              className={`w-10 h-10 rounded-full items-center justify-center mr-3 ${
-                document.verified ? "bg-success/20" : "bg-warning/20"
-              }`}
-            >
-              <Ionicons
-                name={
-                  document.verified
-                    ? "shield-checkmark"
-                    : "shield-half-outline"
-                }
-                size={22}
-                color={document.verified ? "#00C853" : "#FFB300"}
-              />
-            </View>
-            <View className="flex-1">
-              <Text className="text-white font-semibold">
-                {document.verified
-                  ? "Verified Credential"
-                  : "Pending Verification"}
-              </Text>
-              <Text className="text-white/50 text-sm mt-0.5">
-                {document.verified
-                  ? "This document has been verified"
-                  : "Verification may take up to 24 hours"}
-              </Text>
-            </View>
-          </View>
-        </GlassCard>
-
-        {/* Document Details */}
-        <GlassCard className="mb-4">
-          <Text className="text-white font-semibold text-lg mb-4">
-            Details
-          </Text>
-
-          {[
-            { label: "Type", value: document.type.replace(/_/g, " ") },
-            { label: "Document Number", value: document.documentNumber },
-            { label: "Issuer", value: document.issuer },
-            {
-              label: "Expiry Date",
-              value: document.expiryDate
-                ? formatDate(document.expiryDate)
-                : null,
-            },
-            {
-              label: "Added",
-              value: formatDate(document.createdAt),
-            },
-          ]
-            .filter((item) => item.value)
-            .map((item) => (
-              <View
-                key={item.label}
-                className="flex-row items-center justify-between py-3 border-b border-white/5"
-              >
-                <Text className="text-white/50 text-sm">{item.label}</Text>
-                <Text className="text-white text-sm font-medium capitalize">
-                  {item.value}
-                </Text>
-              </View>
-            ))}
-
-          {/* Expiry warning */}
-          {daysUntilExpiry !== null && daysUntilExpiry <= 30 && (
-            <View
-              className={`mt-3 p-3 rounded-xl ${
-                daysUntilExpiry <= 0 ? "bg-danger/10" : "bg-warning/10"
-              }`}
-            >
-              <View className="flex-row items-center">
-                <Ionicons
-                  name="warning"
-                  size={18}
-                  color={daysUntilExpiry <= 0 ? "#FF3D71" : "#FFB300"}
+        <ScrollView
+          className="flex-1 px-5 pt-4"
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ paddingBottom: 100 }}
+        >
+          {/* Document Image */}
+          {document.frontImageUrl && (
+            <View className="mb-5">
+              <View className="overflow-hidden rounded-3xl border border-ios-border" style={styles.cardShadow}>
+                <Image
+                  source={{
+                    uri: showFront
+                      ? document.frontImageUrl
+                      : document.backImageUrl || document.frontImageUrl,
+                  }}
+                  style={{ width: width - 40, height: (width - 40) * 0.63 }}
+                  resizeMode="cover"
                 />
-                <Text
-                  className={`ml-2 text-sm font-medium ${
-                    daysUntilExpiry <= 0 ? "text-danger" : "text-warning"
-                  }`}
-                >
-                  {daysUntilExpiry <= 0
-                    ? "This document has expired"
-                    : `Expires in ${daysUntilExpiry} days`}
-                </Text>
               </View>
+              {document.backImageUrl && (
+                <View className="flex-row justify-center mt-3 gap-3">
+                  <TouchableOpacity
+                    onPress={() => setShowFront(true)}
+                    className={`px-4 py-2 rounded-full ${
+                      showFront ? "bg-primary" : "bg-white border border-ios-border"
+                    }`}
+                  >
+                    <Text
+                      className={showFront ? "text-white text-sm" : "text-ios-grey4 text-sm"}
+                    >
+                      Front
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => setShowFront(false)}
+                    className={`px-4 py-2 rounded-full ${
+                      !showFront ? "bg-primary" : "bg-white border border-ios-border"
+                    }`}
+                  >
+                    <Text
+                      className={!showFront ? "text-white text-sm" : "text-ios-grey4 text-sm"}
+                    >
+                      Back
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )}
             </View>
           )}
-        </GlassCard>
 
-        {/* AI Extracted Metadata */}
-        {document.metadata && (
-          <GlassCard className="mb-4">
-            <Text className="text-white font-semibold text-lg mb-3">
-              Extracted Information
+          {/* Verification Status */}
+          <View
+            className="bg-white rounded-3xl border border-ios-border p-4 mb-4"
+            style={styles.cardShadow}
+          >
+            <View className="flex-row items-center">
+              <View
+                className="w-10 h-10 rounded-full items-center justify-center mr-3"
+                style={{
+                  backgroundColor: document.verified
+                    ? "rgba(48, 209, 88, 0.12)"
+                    : "rgba(255, 149, 0, 0.12)",
+                }}
+              >
+                <Ionicons
+                  name={
+                    document.verified
+                      ? "shield-checkmark"
+                      : "shield-half-outline"
+                  }
+                  size={22}
+                  color={document.verified ? "#30D158" : "#FF9500"}
+                />
+              </View>
+              <View className="flex-1">
+                <Text className="text-ios-dark font-semibold">
+                  {document.verified
+                    ? "Verified Credential"
+                    : "Pending Verification"}
+                </Text>
+                <Text className="text-ios-grey4 text-sm mt-0.5">
+                  {document.verified
+                    ? "This document has been verified"
+                    : "Verification may take up to 24 hours"}
+                </Text>
+              </View>
+            </View>
+          </View>
+
+          {/* Document Details */}
+          <View
+            className="bg-white rounded-3xl border border-ios-border p-5 mb-4"
+            style={styles.cardShadow}
+          >
+            <Text className="text-ios-dark font-semibold text-lg mb-4">
+              Details
             </Text>
-            {Object.entries(document.metadata as Record<string, any>)
-              .filter(
-                ([key, value]) => value && key !== "raw" && typeof value === "string"
-              )
-              .map(([key, value]) => (
+
+            {[
+              { label: "Type", value: document.type.replace(/_/g, " ") },
+              { label: "Document Number", value: document.documentNumber },
+              { label: "Issuer", value: document.issuer },
+              {
+                label: "Expiry Date",
+                value: document.expiryDate
+                  ? formatDate(document.expiryDate)
+                  : null,
+              },
+              {
+                label: "Added",
+                value: formatDate(document.createdAt),
+              },
+            ]
+              .filter((item) => item.value)
+              .map((item) => (
                 <View
-                  key={key}
-                  className="flex-row items-center justify-between py-2 border-b border-white/5"
+                  key={item.label}
+                  className="flex-row items-center justify-between py-3 border-b border-ios-border"
                 >
-                  <Text className="text-white/50 text-sm capitalize">
-                    {key.replace(/([A-Z])/g, " $1").trim()}
-                  </Text>
-                  <Text className="text-white text-sm font-medium">
-                    {String(value)}
+                  <Text className="text-ios-grey4 text-sm">{item.label}</Text>
+                  <Text className="text-ios-dark text-sm font-medium capitalize">
+                    {item.value}
                   </Text>
                 </View>
               ))}
-          </GlassCard>
-        )}
 
-        {/* AI Extract Button */}
-        {!document.metadata && document.frontImageUrl && (
-          <GlassButton
-            title={extracting ? "Extracting..." : "Extract Data with AI"}
-            onPress={handleExtract}
-            loading={extracting}
-            variant="secondary"
-            size="lg"
-            icon={
-              <Ionicons name="sparkles" size={18} color="#6C63FF" />
-            }
-            className="mb-4"
-          />
-        )}
-      </ScrollView>
-    </ScreenWrapper>
+            {daysUntilExpiry !== null && daysUntilExpiry <= 30 && (
+              <View
+                className={`mt-3 p-3 rounded-xl ${
+                  daysUntilExpiry <= 0 ? "bg-danger/10" : "bg-warning/10"
+                }`}
+              >
+                <View className="flex-row items-center">
+                  <Ionicons
+                    name="warning"
+                    size={18}
+                    color={daysUntilExpiry <= 0 ? "#FF3B30" : "#FF9500"}
+                  />
+                  <Text
+                    className={`ml-2 text-sm font-medium ${
+                      daysUntilExpiry <= 0 ? "text-danger" : "text-warning"
+                    }`}
+                  >
+                    {daysUntilExpiry <= 0
+                      ? "This document has expired"
+                      : `Expires in ${daysUntilExpiry} days`}
+                  </Text>
+                </View>
+              </View>
+            )}
+          </View>
+
+          {/* AI Extracted Metadata */}
+          {document.metadata && (
+            <View
+              className="bg-white rounded-3xl border border-ios-border p-5 mb-4"
+              style={styles.cardShadow}
+            >
+              <Text className="text-ios-dark font-semibold text-lg mb-3">
+                Extracted Information
+              </Text>
+              {Object.entries(document.metadata as Record<string, any>)
+                .filter(
+                  ([key, value]) => value && key !== "raw" && typeof value === "string"
+                )
+                .map(([key, value]) => (
+                  <View
+                    key={key}
+                    className="flex-row items-center justify-between py-2 border-b border-ios-border"
+                  >
+                    <Text className="text-ios-grey4 text-sm capitalize">
+                      {key.replace(/([A-Z])/g, " $1").trim()}
+                    </Text>
+                    <Text className="text-ios-dark text-sm font-medium">
+                      {String(value)}
+                    </Text>
+                  </View>
+                ))}
+            </View>
+          )}
+
+          {/* AI Extract Button */}
+          {!document.metadata && document.frontImageUrl && (
+            <GlassButton
+              title={extracting ? "Extracting..." : "Extract Data with AI"}
+              onPress={handleExtract}
+              loading={extracting}
+              variant="secondary"
+              size="lg"
+              icon={
+                <Ionicons name="sparkles" size={18} color="#0A84FF" />
+              }
+              className="mb-4"
+              fullWidth
+            />
+          )}
+        </ScrollView>
+      </SafeAreaView>
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  cardShadow: {
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+});

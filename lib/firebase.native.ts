@@ -44,6 +44,11 @@ export async function getFirebaseToken(): Promise<string | null> {
  * Sign out of Firebase.
  */
 export async function signOutFirebase(): Promise<void> {
+  const user = auth().currentUser;
+
+  // If there's no signed-in user (e.g. simulator test flows), treat as a no-op
+  if (!user) return;
+
   await auth().signOut();
 }
 

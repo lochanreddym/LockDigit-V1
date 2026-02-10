@@ -6,13 +6,14 @@ export default function AuthLayout() {
     <Stack
       screenOptions={{
         headerShown: false,
-        contentStyle: { backgroundColor: "#0A0E1A" },
+        contentStyle: { backgroundColor: "#F2F2F7" },
         animation: "slide_from_right",
       }}
     >
       <Stack.Screen name="login" />
       <Stack.Screen name="verify" />
       <Stack.Screen name="create-pin" />
+      <Stack.Screen name="identity-verification" />
     </Stack>
   );
 }

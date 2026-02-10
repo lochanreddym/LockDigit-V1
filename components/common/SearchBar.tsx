@@ -1,6 +1,5 @@
 import React from "react";
 import { View, TextInput, TouchableOpacity, StyleSheet } from "react-native";
-import { BlurView } from "expo-blur";
 import { Ionicons } from "@expo/vector-icons";
 
 interface SearchBarProps {
@@ -20,22 +19,21 @@ export function SearchBar({
 }: SearchBarProps) {
   return (
     <View
-      className="mx-5 my-2 overflow-hidden rounded-2xl border border-glass-border"
+      className="mx-5 my-2 overflow-hidden rounded-2xl border border-ios-border bg-white"
       style={styles.container}
     >
-      <BlurView intensity={15} tint="dark" style={StyleSheet.absoluteFill} />
       <View className="flex-row items-center px-4 py-3">
         <Ionicons
           name="search"
           size={20}
-          color="rgba(255, 255, 255, 0.5)"
+          color="#8E8E93"
         />
         <TextInput
           value={value}
           onChangeText={onChangeText}
           placeholder={placeholder}
-          placeholderTextColor="rgba(255, 255, 255, 0.4)"
-          className="flex-1 text-white text-base ml-3"
+          placeholderTextColor="#86868B"
+          className="flex-1 text-ios-dark text-base ml-3"
           onFocus={onFocus}
           returnKeyType="search"
         />
@@ -49,7 +47,7 @@ export function SearchBar({
             <Ionicons
               name="close-circle"
               size={20}
-              color="rgba(255, 255, 255, 0.5)"
+              color="#C7C7CC"
             />
           </TouchableOpacity>
         )}
@@ -60,6 +58,10 @@ export function SearchBar({
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: "rgba(255, 255, 255, 0.05)",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.03,
+    shadowRadius: 4,
+    elevation: 1,
   },
 });

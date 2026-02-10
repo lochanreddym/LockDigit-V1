@@ -1,39 +1,35 @@
 import React from "react";
 import { View, StyleSheet, ViewProps } from "react-native";
-import { BlurView } from "expo-blur";
 import { cn } from "@/lib/utils";
 
 interface GlassCardProps extends ViewProps {
-  intensity?: number;
-  tint?: "light" | "dark" | "default";
   className?: string;
   children: React.ReactNode;
   noPadding?: boolean;
+  // Legacy props kept for compatibility (now ignored)
+  intensity?: number;
+  tint?: string;
 }
 
 export function GlassCard({
-  intensity = 30,
-  tint = "dark",
   className,
   children,
   noPadding = false,
   style,
+  intensity: _intensity,
+  tint: _tint,
   ...props
 }: GlassCardProps) {
   return (
     <View
       className={cn(
-        "overflow-hidden rounded-[20px] border border-glass-border",
+        "overflow-hidden rounded-3xl border border-ios-border bg-white",
         className
       )}
       style={[styles.container, style]}
       {...props}
     >
-      <BlurView intensity={intensity} tint={tint} style={StyleSheet.absoluteFill} />
-      <View
-        className={cn(noPadding ? "" : "p-4")}
-        style={styles.content}
-      >
+      <View className={cn(noPadding ? "" : "p-4")}>
         {children}
       </View>
     </View>
@@ -42,9 +38,10 @@ export function GlassCard({
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: "rgba(255, 255, 255, 0.05)",
-  },
-  content: {
-    zIndex: 1,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 2,
   },
 });

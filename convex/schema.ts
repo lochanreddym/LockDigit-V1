@@ -126,4 +126,18 @@ export default defineSchema({
   })
     .index("by_user", ["userId"])
     .index("by_user_unread", ["userId", "read"]),
+
+  identityRequests: defineTable({
+    fullName: v.string(),
+    email: v.optional(v.string()),
+    phone: v.string(),
+    idNumber: v.string(),
+    countryCode: v.optional(v.string()),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("approved"),
+      v.literal("rejected")
+    ),
+    createdAt: v.number(),
+  }).index("by_phone", ["phone"]),
 });

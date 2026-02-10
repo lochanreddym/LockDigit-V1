@@ -26,16 +26,16 @@ const categoryIcons: Record<string, keyof typeof Ionicons.glyphMap> = {
   other: "receipt-outline",
 };
 
-const statusColors = {
+const statusColors: Record<string, string> = {
   pending: "text-warning",
   paid: "text-success",
   overdue: "text-danger",
 };
 
-const statusBgColors = {
-  pending: "bg-warning/20",
-  paid: "bg-success/20",
-  overdue: "bg-danger/20",
+const statusBgColors: Record<string, string> = {
+  pending: "bg-warning/10",
+  paid: "bg-success/10",
+  overdue: "bg-danger/10",
 };
 
 export function BillCard({
@@ -53,24 +53,24 @@ export function BillCard({
     <TouchableOpacity onPress={onPress} activeOpacity={0.8}>
       <GlassCard className="mb-3">
         <View className="flex-row items-center">
-          <View className="w-12 h-12 rounded-xl bg-primary/20 items-center justify-center mr-4">
+          <View className="w-12 h-12 rounded-xl bg-primary/10 items-center justify-center mr-4">
             <Ionicons
               name={categoryIcons[category] || "receipt-outline"}
               size={24}
-              color="#6C63FF"
+              color="#0A84FF"
             />
           </View>
 
           <View className="flex-1">
             <View className="flex-row items-center">
-              <Text className="text-white font-semibold text-base flex-1" numberOfLines={1}>
+              <Text className="text-ios-dark font-semibold text-base flex-1" numberOfLines={1}>
                 {title}
               </Text>
               {recurring && (
                 <Ionicons
                   name="repeat"
                   size={14}
-                  color="rgba(255, 255, 255, 0.4)"
+                  color="#C7C7CC"
                   style={{ marginLeft: 4 }}
                 />
               )}
@@ -83,7 +83,7 @@ export function BillCard({
                 </Text>
               </View>
               {status === "pending" && daysUntil > 0 && (
-                <Text className="text-white/40 text-xs ml-2">
+                <Text className="text-ios-grey4 text-xs ml-2">
                   Due in {daysUntil} day{daysUntil !== 1 ? "s" : ""}
                 </Text>
               )}
@@ -94,10 +94,10 @@ export function BillCard({
           </View>
 
           <View className="items-end ml-3">
-            <Text className="text-white font-bold text-base">
+            <Text className="text-ios-dark font-bold text-base">
               {formatCurrency(amount)}
             </Text>
-            <Text className="text-white/40 text-xs mt-0.5">
+            <Text className="text-ios-grey4 text-xs mt-0.5">
               {formatDate(dueDate)}
             </Text>
           </View>

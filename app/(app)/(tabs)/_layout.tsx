@@ -1,8 +1,7 @@
 import React from "react";
 import { Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { View, StyleSheet } from "react-native";
-import { BlurView } from "expo-blur";
+import { StyleSheet, Platform } from "react-native";
 
 export default function TabLayout() {
   return (
@@ -10,15 +9,8 @@ export default function TabLayout() {
       screenOptions={{
         headerShown: false,
         tabBarStyle: styles.tabBar,
-        tabBarBackground: () => (
-          <BlurView
-            intensity={40}
-            tint="dark"
-            style={StyleSheet.absoluteFill}
-          />
-        ),
-        tabBarActiveTintColor: "#6C63FF",
-        tabBarInactiveTintColor: "rgba(255, 255, 255, 0.4)",
+        tabBarActiveTintColor: "#0A84FF",
+        tabBarInactiveTintColor: "#8E8E93",
         tabBarLabelStyle: styles.tabBarLabel,
       }}
     >
@@ -26,8 +18,12 @@ export default function TabLayout() {
         name="home"
         options={{
           title: "Home",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="home-outline" size={size} color={color} />
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons
+              name={focused ? "home" : "home-outline"}
+              size={24}
+              color={color}
+            />
           ),
         }}
       />
@@ -35,17 +31,25 @@ export default function TabLayout() {
         name="wallet"
         options={{
           title: "Wallet",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="wallet-outline" size={size} color={color} />
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons
+              name={focused ? "wallet" : "wallet-outline"}
+              size={24}
+              color={color}
+            />
           ),
         }}
       />
       <Tabs.Screen
         name="payments"
         options={{
-          title: "Payments",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="card-outline" size={size} color={color} />
+          title: "History",
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons
+              name={focused ? "time" : "time-outline"}
+              size={24}
+              color={color}
+            />
           ),
         }}
       />
@@ -53,10 +57,10 @@ export default function TabLayout() {
         name="notifications"
         options={{
           title: "Alerts",
-          tabBarIcon: ({ color, size }) => (
+          tabBarIcon: ({ color, focused }) => (
             <Ionicons
-              name="notifications-outline"
-              size={size}
+              name={focused ? "notifications" : "notifications-outline"}
+              size={24}
               color={color}
             />
           ),
@@ -66,8 +70,12 @@ export default function TabLayout() {
         name="profile"
         options={{
           title: "Profile",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="person-outline" size={size} color={color} />
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons
+              name={focused ? "person" : "person-outline"}
+              size={24}
+              color={color}
+            />
           ),
         }}
       />
@@ -77,14 +85,17 @@ export default function TabLayout() {
 
 const styles = StyleSheet.create({
   tabBar: {
-    position: "absolute",
-    backgroundColor: "rgba(10, 14, 26, 0.85)",
-    borderTopColor: "rgba(255, 255, 255, 0.08)",
+    backgroundColor: "#FFFFFF",
+    borderTopColor: "#E5E5EA",
     borderTopWidth: 1,
     elevation: 0,
-    height: 85,
-    paddingBottom: 30,
+    height: Platform.OS === "ios" ? 85 : 65,
+    paddingBottom: Platform.OS === "ios" ? 30 : 8,
     paddingTop: 8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
   },
   tabBarLabel: {
     fontSize: 11,

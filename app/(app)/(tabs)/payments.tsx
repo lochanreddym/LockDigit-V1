@@ -6,25 +6,30 @@ import {
   TouchableOpacity,
   Alert,
   Modal,
+  StyleSheet,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import { ScreenWrapper, Header, EmptyState } from "@/components/common";
-import { GlassCard, GlassButton, GlassInput } from "@/components/glass";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { GlassButton, GlassInput } from "@/components/glass";
 import { BillCard, TransactionItem } from "@/components/payments";
+import { EmptyState } from "@/components/common";
 import { formatCurrency } from "@/lib/utils";
 import { useAuthStore } from "@/hooks/useAuth";
 import { Id } from "@/convex/_generated/dataModel";
 import { Config } from "@/constants/Config";
+import { LinearGradient } from "expo-linear-gradient";
+
+type FilterType = "all" | "completed" | "pending";
 
 export default function PaymentsScreen() {
   const router = useRouter();
   const { userId } = useAuthStore();
   const convexUserId = userId as Id<"users"> | null;
 
-  const [activeTab, setActiveTab] = useState<"bills" | "transactions">("bills");
+  const [activeFilter, setActiveFilter] = useState<FilterType>("all");
   const [showAddBill, setShowAddBill] = useState(false);
   const [billTitle, setBillTitle] = useState("");
   const [billAmount, setBillAmount] = useState("");
@@ -45,10 +50,6 @@ export default function PaymentsScreen() {
     api.bills.getTotalDue,
     convexUserId ? { userId: convexUserId } : "skip"
   );
-  const bankAccounts = useQuery(
-    api.payments.listBankAccounts,
-    convexUserId ? { userId: convexUserId } : "skip"
-  );
 
   const createBill = useMutation(api.bills.create);
 
@@ -64,7 +65,7 @@ export default function PaymentsScreen() {
         userId: convexUserId,
         title: billTitle,
         category: billCategory,
-        amount: Math.round(parseFloat(billAmount) * 100), // Convert to cents
+        amount: Math.round(parseFloat(billAmount) * 100),
         dueDate: billDueDate
           ? new Date(billDueDate).getTime()
           : Date.now() + 30 * 24 * 60 * 60 * 1000,
@@ -84,285 +85,301 @@ export default function PaymentsScreen() {
     }
   };
 
-  const pendingBills = bills?.filter((b) => b.status !== "paid") ?? [];
-  const paidBills = bills?.filter((b) => b.status === "paid") ?? [];
+  // Calculate totals
+  const completedTransactions =
+    transactions?.filter((t) => t.status === "completed") ?? [];
+  const totalSpent = completedTransactions.reduce(
+    (sum, t) => sum + t.amount,
+    0
+  );
+
+  const filteredTransactions =
+    activeFilter === "all"
+      ? transactions
+      : transactions?.filter((t) => t.status === activeFilter);
+
+  const filters: { key: FilterType; label: string }[] = [
+    { key: "all", label: "All" },
+    { key: "completed", label: "Completed" },
+    { key: "pending", label: "Pending" },
+  ];
 
   return (
-    <ScreenWrapper>
-      <Header
-        title="Payments"
-        rightAction={{
-          icon: "add-circle-outline",
-          onPress: () => setShowAddBill(true),
-        }}
-      />
-
-      <ScrollView
-        className="flex-1 px-5"
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 100 }}
-      >
-        {/* Financial Summary */}
-        <GlassCard className="mb-5">
+    <View className="flex-1 bg-ios-bg">
+      <SafeAreaView className="flex-1" edges={["top"]}>
+        {/* Header */}
+        <View className="bg-white border-b border-ios-border px-5 py-3">
           <View className="flex-row items-center justify-between">
-            <View>
-              <Text className="text-white/60 text-sm">Total Outstanding</Text>
-              <Text className="text-white text-3xl font-bold mt-1">
-                {formatCurrency(totalDue ?? 0)}
-              </Text>
-            </View>
+            <Text className="text-2xl font-bold text-ios-dark">
+              Transaction History
+            </Text>
             <TouchableOpacity
-              onPress={() => router.push("/(app)/scan-to-pay")}
-              className="w-14 h-14 rounded-2xl bg-primary items-center justify-center"
+              onPress={() => setShowAddBill(true)}
+              className="w-10 h-10 rounded-full bg-primary items-center justify-center"
+              style={styles.addShadow}
             >
-              <Ionicons name="qr-code" size={28} color="#FFFFFF" />
+              <Ionicons name="add" size={24} color="#FFFFFF" />
             </TouchableOpacity>
           </View>
+        </View>
 
-          {/* Bank accounts summary */}
-          {bankAccounts && bankAccounts.length > 0 && (
-            <View className="mt-4 pt-4 border-t border-white/10">
-              <Text className="text-white/50 text-xs mb-2">
-                Payment Methods
+        <ScrollView
+          className="flex-1"
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ paddingBottom: 100 }}
+        >
+          {/* Filter Pills */}
+          <View className="flex-row px-5 pt-4 pb-3 gap-2">
+            {filters.map((filter) => (
+              <TouchableOpacity
+                key={filter.key}
+                onPress={() => setActiveFilter(filter.key)}
+                className={`px-4 py-2 rounded-full ${
+                  activeFilter === filter.key
+                    ? "bg-primary"
+                    : "bg-white border border-ios-border"
+                }`}
+                style={
+                  activeFilter === filter.key ? styles.filterShadow : undefined
+                }
+              >
+                <Text
+                  className={`text-sm font-medium ${
+                    activeFilter === filter.key ? "text-white" : "text-ios-grey4"
+                  }`}
+                >
+                  {filter.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {/* Summary Card */}
+          <View className="px-5 mb-4">
+            <LinearGradient
+              colors={["#0A84FF", "#5E5CE6"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              className="rounded-3xl p-5 overflow-hidden"
+              style={styles.summaryCardShadow}
+            >
+              <View className="absolute top-3 right-3 w-16 h-16 rounded-2xl bg-white/10 rotate-12" />
+              <Text className="text-white/80 text-sm">Total Spent This Month</Text>
+              <Text className="text-white text-3xl font-bold mt-1">
+                {formatCurrency(totalSpent)}
               </Text>
-              <View className="flex-row gap-2">
-                {bankAccounts.map((account) => (
+              <View className="flex-row mt-3 gap-4">
+                <View>
+                  <Text className="text-white/60 text-xs">Outstanding</Text>
+                  <Text className="text-white font-semibold">
+                    {formatCurrency(totalDue ?? 0)}
+                  </Text>
+                </View>
+                <View>
+                  <Text className="text-white/60 text-xs">Transactions</Text>
+                  <Text className="text-white font-semibold">
+                    {transactions?.length ?? 0}
+                  </Text>
+                </View>
+              </View>
+            </LinearGradient>
+          </View>
+
+          {/* Transaction List */}
+          <View className="px-5">
+            {filteredTransactions && filteredTransactions.length > 0 ? (
+              <View
+                className="bg-white rounded-3xl border border-ios-border p-4"
+                style={styles.cardShadow}
+              >
+                {filteredTransactions.map((tx, index) => (
                   <View
-                    key={account._id}
-                    className="flex-row items-center bg-white/5 rounded-lg px-3 py-1.5"
+                    key={tx._id}
+                    className={
+                      index < filteredTransactions.length - 1
+                        ? ""
+                        : ""
+                    }
                   >
-                    <Ionicons
-                      name="card-outline"
-                      size={14}
-                      color="rgba(255,255,255,0.5)"
+                    <TransactionItem
+                      type={tx.type}
+                      amount={tx.amount}
+                      description={tx.description}
+                      merchantName={tx.merchantName}
+                      status={tx.status}
+                      createdAt={tx.createdAt}
                     />
-                    <Text className="text-white/60 text-xs ml-1.5">
-                      {account.bankName} ****{account.accountLast4}
-                    </Text>
                   </View>
                 ))}
               </View>
-            </View>
-          )}
-        </GlassCard>
-
-        {/* Tab Selector */}
-        <View className="flex-row mb-4 bg-white/5 rounded-xl p-1">
-          <TouchableOpacity
-            onPress={() => setActiveTab("bills")}
-            className={`flex-1 py-2.5 rounded-lg ${activeTab === "bills" ? "bg-primary" : ""}`}
-          >
-            <Text
-              className={`text-center font-semibold text-sm ${
-                activeTab === "bills" ? "text-white" : "text-white/50"
-              }`}
-            >
-              Bills ({pendingBills.length})
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => setActiveTab("transactions")}
-            className={`flex-1 py-2.5 rounded-lg ${activeTab === "transactions" ? "bg-primary" : ""}`}
-          >
-            <Text
-              className={`text-center font-semibold text-sm ${
-                activeTab === "transactions" ? "text-white" : "text-white/50"
-              }`}
-            >
-              Transactions
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Content */}
-        {activeTab === "bills" ? (
-          <>
-            {pendingBills.length > 0 ? (
-              <>
-                <Text className="text-white/60 text-sm font-medium uppercase tracking-wider mb-2">
-                  Pending & Overdue
-                </Text>
-                {pendingBills.map((bill) => (
-                  <BillCard
-                    key={bill._id}
-                    title={bill.title}
-                    category={bill.category}
-                    amount={bill.amount}
-                    dueDate={bill.dueDate}
-                    status={bill.status}
-                    recurring={bill.recurring}
-                    onPress={() =>
-                      router.push({
-                        pathname: "/(app)/bill/[id]",
-                        params: { id: bill._id },
-                      })
-                    }
-                  />
-                ))}
-
-                {paidBills.length > 0 && (
-                  <>
-                    <Text className="text-white/60 text-sm font-medium uppercase tracking-wider mb-2 mt-4">
-                      Paid
-                    </Text>
-                    {paidBills.slice(0, 5).map((bill) => (
-                      <BillCard
-                        key={bill._id}
-                        title={bill.title}
-                        category={bill.category}
-                        amount={bill.amount}
-                        dueDate={bill.dueDate}
-                        status={bill.status}
-                        recurring={bill.recurring}
-                        onPress={() =>
-                          router.push({
-                            pathname: "/(app)/bill/[id]",
-                            params: { id: bill._id },
-                          })
-                        }
-                      />
-                    ))}
-                  </>
-                )}
-              </>
-            ) : (
-              <EmptyState
-                icon="receipt-outline"
-                title="No Bills Yet"
-                description="Add your bills to track payments and get reminders."
-                action={
-                  <GlassButton
-                    title="Add a Bill"
-                    onPress={() => setShowAddBill(true)}
-                    variant="primary"
-                    size="md"
-                  />
-                }
-              />
-            )}
-          </>
-        ) : (
-          <>
-            {transactions && transactions.length > 0 ? (
-              <GlassCard>
-                {transactions.map((tx) => (
-                  <TransactionItem
-                    key={tx._id}
-                    type={tx.type}
-                    amount={tx.amount}
-                    description={tx.description}
-                    merchantName={tx.merchantName}
-                    status={tx.status}
-                    createdAt={tx.createdAt}
-                  />
-                ))}
-              </GlassCard>
             ) : (
               <EmptyState
                 icon="card-outline"
-                title="No Transactions Yet"
+                title="No Transactions"
                 description="Your payment history will appear here."
               />
             )}
-          </>
-        )}
-      </ScrollView>
+          </View>
 
-      {/* Add Bill Modal */}
-      <Modal
-        visible={showAddBill}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setShowAddBill(false)}
-      >
-        <View className="flex-1 justify-end bg-black/50">
-          <View className="bg-dark rounded-t-3xl px-5 pt-6 pb-10">
-            <View className="flex-row items-center justify-between mb-6">
-              <Text className="text-white text-xl font-bold">Add New Bill</Text>
-              <TouchableOpacity onPress={() => setShowAddBill(false)}>
-                <Ionicons name="close" size={24} color="#FFFFFF" />
-              </TouchableOpacity>
+          {/* Bills Section */}
+          {bills && bills.length > 0 && (
+            <View className="px-5 mt-5">
+              <Text className="text-ios-dark font-semibold text-lg mb-3">
+                Your Bills
+              </Text>
+              {bills.slice(0, 5).map((bill) => (
+                <BillCard
+                  key={bill._id}
+                  title={bill.title}
+                  category={bill.category}
+                  amount={bill.amount}
+                  dueDate={bill.dueDate}
+                  status={bill.status}
+                  recurring={bill.recurring}
+                  onPress={() =>
+                    router.push({
+                      pathname: "/(app)/bill/[id]",
+                      params: { id: bill._id },
+                    })
+                  }
+                />
+              ))}
             </View>
+          )}
+        </ScrollView>
 
-            <GlassInput
-              label="Bill Title"
-              placeholder="e.g., Electricity Bill"
-              value={billTitle}
-              onChangeText={setBillTitle}
-            />
+        {/* Add Bill Modal */}
+        <Modal
+          visible={showAddBill}
+          animationType="slide"
+          presentationStyle="pageSheet"
+        >
+          <View className="flex-1 bg-ios-bg">
+            <SafeAreaView className="flex-1">
+              <View className="flex-row items-center justify-between px-5 py-3 bg-white border-b border-ios-border">
+                <TouchableOpacity onPress={() => setShowAddBill(false)}>
+                  <Text className="text-primary text-base">Cancel</Text>
+                </TouchableOpacity>
+                <Text className="text-ios-dark font-semibold text-base">
+                  Add New Bill
+                </Text>
+                <View className="w-14" />
+              </View>
 
-            <GlassInput
-              label="Amount ($)"
-              placeholder="0.00"
-              value={billAmount}
-              onChangeText={setBillAmount}
-              keyboardType="decimal-pad"
-            />
+              <ScrollView className="flex-1 px-5 pt-4">
+                <GlassInput
+                  label="Bill Title"
+                  placeholder="e.g., Electricity Bill"
+                  value={billTitle}
+                  onChangeText={setBillTitle}
+                />
 
-            <Text className="text-sm text-white/70 mb-2 font-medium">
-              Category
-            </Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              className="mb-4"
-            >
-              {Config.BILL_CATEGORIES.map((cat) => (
-                <TouchableOpacity
-                  key={cat}
-                  onPress={() => setBillCategory(cat)}
-                  className={`mr-3 px-4 py-2 rounded-xl border ${
-                    billCategory === cat
-                      ? "bg-primary/20 border-primary"
-                      : "bg-white/5 border-glass-border"
-                  }`}
+                <GlassInput
+                  label="Amount ($)"
+                  placeholder="0.00"
+                  value={billAmount}
+                  onChangeText={setBillAmount}
+                  keyboardType="decimal-pad"
+                />
+
+                <Text className="text-sm text-ios-dark mb-2 font-medium">
+                  Category
+                </Text>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  className="mb-4"
                 >
-                  <Text
-                    className={`text-sm capitalize ${
-                      billCategory === cat ? "text-primary" : "text-white/60"
+                  {Config.BILL_CATEGORIES.map((cat) => (
+                    <TouchableOpacity
+                      key={cat}
+                      onPress={() => setBillCategory(cat)}
+                      className={`mr-3 px-4 py-2 rounded-xl border ${
+                        billCategory === cat
+                          ? "bg-primary/10 border-primary"
+                          : "bg-white border-ios-border"
+                      }`}
+                    >
+                      <Text
+                        className={`text-sm capitalize ${
+                          billCategory === cat ? "text-primary" : "text-ios-grey4"
+                        }`}
+                      >
+                        {cat}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+
+                <GlassInput
+                  label="Due Date (YYYY-MM-DD)"
+                  placeholder="2026-03-01"
+                  value={billDueDate}
+                  onChangeText={setBillDueDate}
+                />
+
+                <TouchableOpacity
+                  onPress={() => setBillRecurring(!billRecurring)}
+                  className="flex-row items-center mb-6"
+                >
+                  <View
+                    className={`w-6 h-6 rounded-md border mr-3 items-center justify-center ${
+                      billRecurring
+                        ? "bg-primary border-primary"
+                        : "border-ios-borderLight"
                     }`}
                   >
-                    {cat}
-                  </Text>
+                    {billRecurring && (
+                      <Ionicons name="checkmark" size={16} color="#FFFFFF" />
+                    )}
+                  </View>
+                  <Text className="text-ios-dark text-base">Recurring bill</Text>
                 </TouchableOpacity>
-              ))}
-            </ScrollView>
 
-            <GlassInput
-              label="Due Date (YYYY-MM-DD)"
-              placeholder="2026-03-01"
-              value={billDueDate}
-              onChangeText={setBillDueDate}
-            />
-
-            <TouchableOpacity
-              onPress={() => setBillRecurring(!billRecurring)}
-              className="flex-row items-center mb-6"
-            >
-              <View
-                className={`w-6 h-6 rounded-md border mr-3 items-center justify-center ${
-                  billRecurring
-                    ? "bg-primary border-primary"
-                    : "border-glass-border"
-                }`}
-              >
-                {billRecurring && (
-                  <Ionicons name="checkmark" size={16} color="#FFFFFF" />
-                )}
-              </View>
-              <Text className="text-white text-base">Recurring bill</Text>
-            </TouchableOpacity>
-
-            <GlassButton
-              title={creating ? "Creating..." : "Add Bill"}
-              onPress={handleCreateBill}
-              loading={creating}
-              disabled={!billTitle || !billAmount || !billCategory}
-              size="lg"
-            />
+                <GlassButton
+                  title={creating ? "Creating..." : "Add Bill"}
+                  onPress={handleCreateBill}
+                  loading={creating}
+                  disabled={!billTitle || !billAmount || !billCategory}
+                  size="lg"
+                  fullWidth
+                />
+              </ScrollView>
+            </SafeAreaView>
           </View>
-        </View>
-      </Modal>
-    </ScreenWrapper>
+        </Modal>
+      </SafeAreaView>
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  addShadow: {
+    shadowColor: "#0A84FF",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  filterShadow: {
+    shadowColor: "#0A84FF",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  summaryCardShadow: {
+    shadowColor: "#0A84FF",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.2,
+    shadowRadius: 16,
+    elevation: 6,
+  },
+  cardShadow: {
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+});

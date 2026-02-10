@@ -58,22 +58,22 @@ export function DocumentCard({
               resizeMode="cover"
             />
           ) : (
-            <View className="w-16 h-16 rounded-xl bg-primary/20 items-center justify-center mr-4">
+            <View className="w-16 h-16 rounded-xl bg-primary/10 items-center justify-center mr-4">
               <Ionicons
                 name={typeIcons[type] || "document-outline"}
                 size={28}
-                color="#6C63FF"
+                color="#0A84FF"
               />
             </View>
           )}
 
           <View className="flex-1">
             <View className="flex-row items-center">
-              <Text className="text-white font-semibold text-base flex-1" numberOfLines={1}>
+              <Text className="text-ios-dark font-semibold text-base flex-1" numberOfLines={1}>
                 {title}
               </Text>
               {verified && (
-                <View className="bg-success/20 px-2 py-0.5 rounded-full ml-2">
+                <View className="bg-success/10 px-2 py-0.5 rounded-full ml-2">
                   <Text className="text-success text-xs font-medium">
                     Verified
                   </Text>
@@ -81,7 +81,7 @@ export function DocumentCard({
               )}
             </View>
 
-            <Text className="text-white/50 text-sm mt-1">
+            <Text className="text-ios-grey4 text-sm mt-1">
               {typeLabels[type] || type}
               {issuer ? ` - ${issuer}` : ""}
             </Text>
@@ -93,10 +93,10 @@ export function DocumentCard({
                   size={12}
                   color={
                     isExpired
-                      ? "#FF3D71"
+                      ? "#FF3B30"
                       : isExpiringSoon
-                        ? "#FFB300"
-                        : "rgba(255,255,255,0.4)"
+                        ? "#FF9500"
+                        : "#C7C7CC"
                   }
                 />
                 <Text
@@ -105,7 +105,7 @@ export function DocumentCard({
                       ? "text-danger"
                       : isExpiringSoon
                         ? "text-warning"
-                        : "text-white/40"
+                        : "text-ios-grey3"
                   }`}
                 >
                   {isExpired
@@ -119,7 +119,7 @@ export function DocumentCard({
           <Ionicons
             name="chevron-forward"
             size={20}
-            color="rgba(255, 255, 255, 0.3)"
+            color="#C7C7CC"
           />
         </View>
       </GlassCard>

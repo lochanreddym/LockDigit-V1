@@ -18,10 +18,10 @@ const typeIcons: Record<string, keyof typeof Ionicons.glyphMap> = {
   bill_payment: "receipt-outline",
 };
 
-const statusIcons: Record<string, keyof typeof Ionicons.glyphMap> = {
-  pending: "time-outline",
-  completed: "checkmark-circle-outline",
-  failed: "close-circle-outline",
+const statusColors: Record<string, string> = {
+  pending: "#FF9500",
+  completed: "#30D158",
+  failed: "#FF3B30",
 };
 
 export function TransactionItem({
@@ -33,56 +33,41 @@ export function TransactionItem({
   createdAt,
 }: TransactionItemProps) {
   return (
-    <View className="flex-row items-center py-3 border-b border-white/5">
+    <View className="flex-row items-center py-3 border-b border-ios-border">
       <View
-        className={`w-10 h-10 rounded-full items-center justify-center mr-3 ${
-          status === "completed"
-            ? "bg-success/20"
-            : status === "failed"
-              ? "bg-danger/20"
-              : "bg-warning/20"
-        }`}
+        className="w-12 h-12 rounded-2xl items-center justify-center mr-3"
+        style={{ backgroundColor: `${statusColors[status]}15` }}
       >
         <Ionicons
           name={typeIcons[type]}
           size={20}
-          color={
-            status === "completed"
-              ? "#00C853"
-              : status === "failed"
-                ? "#FF3D71"
-                : "#FFB300"
-          }
+          color={statusColors[status]}
         />
       </View>
 
       <View className="flex-1">
-        <Text className="text-white text-sm font-medium" numberOfLines={1}>
+        <Text className="text-ios-dark text-sm font-medium" numberOfLines={1}>
           {merchantName || description}
         </Text>
         <View className="flex-row items-center mt-0.5">
-          <Ionicons
-            name={statusIcons[status]}
-            size={12}
-            color={
-              status === "completed"
-                ? "#00C853"
-                : status === "failed"
-                  ? "#FF3D71"
-                  : "#FFB300"
-            }
+          <View
+            className="w-1.5 h-1.5 rounded-full mr-1.5"
+            style={{ backgroundColor: statusColors[status] }}
           />
-          <Text className="text-white/40 text-xs ml-1 capitalize">
+          <Text
+            className="text-xs capitalize"
+            style={{ color: statusColors[status] }}
+          >
             {status}
           </Text>
-          <Text className="text-white/20 text-xs mx-1">|</Text>
-          <Text className="text-white/40 text-xs">{formatDate(createdAt)}</Text>
+          <View className="w-1 h-1 rounded-full bg-ios-grey3 mx-2" />
+          <Text className="text-ios-grey4 text-xs">{formatDate(createdAt)}</Text>
         </View>
       </View>
 
       <Text
         className={`font-semibold ${
-          status === "failed" ? "text-white/30" : "text-white"
+          status === "failed" ? "text-ios-grey3" : "text-ios-dark"
         }`}
       >
         -{formatCurrency(amount)}

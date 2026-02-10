@@ -1,33 +1,52 @@
 export const Colors = {
-  primary: "#6C63FF",
-  primaryLight: "#8B85FF",
-  primaryDark: "#5A50E6",
-  secondary: "#00D9FF",
-  secondaryDark: "#00B8D9",
+  // Primary brand
+  primary: "#0A84FF",
+  primaryHover: "#0071E3",
+  primaryLight: "#0A84FF10",
 
-  dark: "#0A0E1A",
-  darkCard: "#1A1F33",
-  darkSurface: "#151929",
-  darkBorder: "#2A2F45",
+  // Accent colors
+  accentGreen: "#30D158",
+  accentGreenAlt: "#34C759",
+  accentPurple: "#5E5CE6",
+  accentViolet: "#7C3AED",
 
-  glass: "rgba(255, 255, 255, 0.08)",
-  glassLight: "rgba(255, 255, 255, 0.12)",
-  glassBorder: "rgba(255, 255, 255, 0.15)",
-  glassHighlight: "rgba(255, 255, 255, 0.20)",
+  // Backgrounds
+  background: "#F2F2F7",
+  backgroundAlt: "#F5F5F7",
+  card: "#FFFFFF",
 
-  text: "#FFFFFF",
-  textSecondary: "#A0A5BD",
-  textMuted: "#6B7093",
+  // Text
+  text: "#1C1C1E",
+  textAlt: "#1D1D1F",
+  textSecondary: "#8E8E93",
+  textMuted: "#86868B",
 
-  success: "#00C853",
-  warning: "#FFB300",
-  danger: "#FF3D71",
+  // Borders
+  border: "#E5E5EA",
+  borderLight: "#D2D2D7",
+  borderFaint: "#F5F5F7",
 
+  // Status
+  success: "#30D158",
+  warning: "#FF9500",
+  danger: "#FF3B30",
+
+  // Gradients
   gradient: {
-    primary: ["#6C63FF", "#00D9FF"] as const,
-    dark: ["#0A0E1A", "#151929"] as const,
-    card: ["rgba(255,255,255,0.08)", "rgba(255,255,255,0.02)"] as const,
+    hero: ["#0A84FF", "#5E5CE6", "#7C3AED"] as const,
+    heroSimple: ["#0A84FF", "#0066CC"] as const,
+    button: ["#0A84FF", "#0071E3"] as const,
+    greenSuccess: ["#30D158", "#28C04D"] as const,
   },
+
+  // Tab bar
+  tabActive: "#0A84FF",
+  tabInactive: "#8E8E93",
+
+  // Misc
+  white: "#FFFFFF",
+  black: "#1C1C1E",
+  overlay: "rgba(0, 0, 0, 0.4)",
 };
 
 export default Colors;

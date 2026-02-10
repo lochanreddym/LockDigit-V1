@@ -1,4 +1,5 @@
 import "../global.css";
+import "@/lib/nativewind-interop"; // Register third-party components with NativeWind (must be early)
 import React, { useEffect } from "react";
 import { Stack } from "expo-router";
 import { ConvexProvider, ConvexReactClient } from "convex/react";
@@ -28,11 +29,11 @@ function AppContent() {
 
   return (
     <>
-      <StatusBar style="light" />
+      <StatusBar style="dark" />
       <Stack
         screenOptions={{
           headerShown: false,
-          contentStyle: { backgroundColor: "#0A0E1A" },
+          contentStyle: { backgroundColor: "#F2F2F7" },
           animation: "slide_from_right",
         }}
       >

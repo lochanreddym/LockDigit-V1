@@ -12,13 +12,13 @@ interface EmptyStateProps {
 export function EmptyState({ icon, title, description, action }: EmptyStateProps) {
   return (
     <View className="flex-1 items-center justify-center px-8 py-12">
-      <View className="w-20 h-20 rounded-full bg-white/5 items-center justify-center mb-4">
-        <Ionicons name={icon} size={36} color="rgba(255, 255, 255, 0.3)" />
+      <View className="w-20 h-20 rounded-full bg-ios-bg items-center justify-center mb-4">
+        <Ionicons name={icon} size={36} color="#C7C7CC" />
       </View>
-      <Text className="text-lg font-semibold text-white text-center mb-2">
+      <Text className="text-lg font-semibold text-ios-dark text-center mb-2">
         {title}
       </Text>
-      <Text className="text-sm text-white/50 text-center mb-6">
+      <Text className="text-sm text-ios-grey4 text-center mb-6">
         {description}
       </Text>
       {action}
