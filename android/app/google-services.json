@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "264342644967",
+    "project_id": "lockdigit-421eb",
+    "storage_bucket": "lockdigit-421eb.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:264342644967:android:af8e013d233e1a252bda42",
+        "android_client_info": {
+          "package_name": "com.lockdigit.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDdoVeFquLi6UlrYk5n_-ooHUaTkFj-YF4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
