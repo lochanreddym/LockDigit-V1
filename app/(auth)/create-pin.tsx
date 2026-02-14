@@ -9,7 +9,7 @@ import {
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { useMutation } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { createPin, isPinValid } from "@/lib/pin-manager";
@@ -22,13 +22,19 @@ type PinLength = 4 | 6;
 
 export default function CreatePinScreen() {
   const router = useRouter();
-  const { phone, name, isNewUser } = useLocalSearchParams<{
+  const { phone, name, isNewUser, resetPin } = useLocalSearchParams<{
     phone: string;
     name: string;
     isNewUser: string;
+    resetPin?: string;
   }>();
 
   const createUser = useMutation(api.users.createUser);
+  const updatePin = useMutation(api.users.updatePin);
+  const existingUser = useQuery(
+    api.users.getByPhone,
+    resetPin === "true" && phone ? { phone } : "skip"
+  );
 
   const [pinLength, setPinLength] = useState<PinLength>(4);
   const [pin, setPin] = useState("");
@@ -114,12 +120,36 @@ export default function CreatePinScreen() {
   };
 
   const handleCreatePin = async (finalPin: string) => {
+    if (resetPin === "true") {
+      if (existingUser === undefined) {
+        Alert.alert("Please wait", "Verifying your account…");
+        return;
+      }
+      if (existingUser === null || !phone) {
+        Alert.alert(
+          "Not Registered",
+          "This number is not registered. Please sign up first."
+        );
+        return;
+      }
+    }
+
     setLoading(true);
     try {
       const { hash, salt } = await createPin(finalPin);
-      const deviceId = await getOrCreateDeviceFingerprint();
+      await SecureStoreHelper.storePinLength(String(pinLength));
 
-      if (isNewUser === "true" && phone) {
+      if (resetPin === "true" && existingUser && phone) {
+        await updatePin({
+          userId: existingUser._id,
+          pinHash: hash,
+          pinSalt: salt,
+        });
+        await SecureStoreHelper.storeUserId(existingUser._id);
+        await SecureStoreHelper.setSetupComplete();
+        setAuthenticated(existingUser._id, phone);
+      } else if (isNewUser === "true" && phone) {
+        const deviceId = await getOrCreateDeviceFingerprint();
         const userId = await createUser({
           name: name || "User",
           phone,
@@ -228,8 +258,18 @@ export default function CreatePinScreen() {
             >
               <Ionicons name="chevron-back" size={24} color="#0A84FF" />
             </TouchableOpacity>
-            <Text className="text-xl font-bold text-ios-dark">Create PIN</Text>
+            <Text className="text-xl font-bold text-ios-dark">
+              {resetPin === "true" ? "Create new PIN" : "Create PIN"}
+            </Text>
           </View>
+
+          {resetPin === "true" && existingUser === null && (
+            <View className="mx-5 mt-2 p-4 bg-red-50 border border-red-200 rounded-2xl">
+              <Text className="text-red-600 text-sm text-center">
+                This number is not registered. Go back and use your registered number.
+              </Text>
+            </View>
+          )}
 
           <View className="flex-1 px-5 justify-center">
             <View className="items-center mb-10">

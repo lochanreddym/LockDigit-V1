@@ -11,6 +11,8 @@ export default defineSchema({
     pinSalt: v.string(),
     deviceId: v.string(),
     profileImageId: v.optional(v.id("_storage")),
+    dateOfBirth: v.optional(v.string()),
+    address: v.optional(v.string()),
     createdAt: v.number(),
   })
     .index("by_phone", ["phone"])
@@ -49,6 +51,12 @@ export default defineSchema({
     accountLast4: v.string(),
     stripePaymentMethodId: v.optional(v.string()),
     isDefault: v.boolean(),
+    type: v.optional(v.union(v.literal("bank"), v.literal("card"))),
+    expiryMonth: v.optional(v.string()),
+    expiryYear: v.optional(v.string()),
+    brand: v.optional(v.string()),
+    paymentPinHash: v.optional(v.string()),
+    paymentPinSalt: v.optional(v.string()),
   }).index("by_user", ["userId"]),
 
   bills: defineTable({

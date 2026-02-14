@@ -2,6 +2,11 @@ import { v } from "convex/values";
 import { action, mutation, query } from "./_generated/server";
 import { api } from "./_generated/api";
 
+function hashPaymentPin(pin: string, salt: string): string {
+  const crypto = require("crypto");
+  return crypto.createHash("sha256").update(`${salt}:${pin}`).digest("hex");
+}
+
 export const createTransaction = mutation({
   args: {
     userId: v.id("users"),
@@ -138,23 +143,39 @@ export const addBankAccount = mutation({
     accountLast4: v.string(),
     stripePaymentMethodId: v.optional(v.string()),
     isDefault: v.boolean(),
+    type: v.optional(v.union(v.literal("bank"), v.literal("card"))),
+    expiryMonth: v.optional(v.string()),
+    expiryYear: v.optional(v.string()),
+    brand: v.optional(v.string()),
+    paymentPinHash: v.optional(v.string()),
+    paymentPinSalt: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    // If setting as default, unset other defaults
     if (args.isDefault) {
       const existing = await ctx.db
         .query("bankAccounts")
         .withIndex("by_user", (q) => q.eq("userId", args.userId))
         .collect();
-
       for (const account of existing) {
         if (account.isDefault) {
           await ctx.db.patch(account._id, { isDefault: false });
         }
       }
     }
-
     return await ctx.db.insert("bankAccounts", args);
+  },
+});
+
+export const verifyPaymentPin = mutation({
+  args: {
+    accountId: v.id("bankAccounts"),
+    pin: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const account = await ctx.db.get(args.accountId);
+    if (!account?.paymentPinHash || !account?.paymentPinSalt) return false;
+    const hash = hashPaymentPin(args.pin, account.paymentPinSalt);
+    return hash === account.paymentPinHash;
   },
 });
 

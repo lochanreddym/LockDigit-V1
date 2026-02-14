@@ -18,11 +18,12 @@ const OTP_LENGTH = 6;
 
 export default function VerifyScreen() {
   const router = useRouter();
-  const { phone, name, isNewUser, simulatorTest } = useLocalSearchParams<{
+  const { phone, name, isNewUser, simulatorTest, resetPin } = useLocalSearchParams<{
     phone: string;
     name: string;
     isNewUser: string;
     simulatorTest?: string;
+    resetPin?: string;
   }>();
 
   const [otp, setOtp] = useState<string[]>(new Array(OTP_LENGTH).fill(""));
@@ -98,6 +99,7 @@ export default function VerifyScreen() {
             phone: phone || "",
             name: name || "",
             isNewUser: isNewUser || "false",
+            ...(resetPin === "true" && { resetPin: "true" }),
           },
         });
         setLoading(false);
@@ -113,6 +115,7 @@ export default function VerifyScreen() {
             name: name || "",
             isNewUser: isNewUser || "false",
             firebaseUid: user.uid,
+            ...(resetPin === "true" && { resetPin: "true" }),
           },
         });
       } else {

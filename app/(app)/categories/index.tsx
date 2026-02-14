@@ -9,21 +9,7 @@ import {
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
-
-const CATEGORIES = [
-  { icon: "flash-outline", label: "Utilities", color: "#FF9500", desc: "Electricity, Gas, Water" },
-  { icon: "call-outline", label: "Telecom", color: "#0A84FF", desc: "Phone, Mobile plans" },
-  { icon: "wifi-outline", label: "Internet", color: "#5E5CE6", desc: "Broadband, Fiber" },
-  { icon: "tv-outline", label: "Cable & TV", color: "#FF3B30", desc: "Cable, Streaming" },
-  { icon: "shield-outline", label: "Insurance", color: "#30D158", desc: "Health, Auto, Life" },
-  { icon: "home-outline", label: "Rent & Mortgage", color: "#FF9500", desc: "Housing payments" },
-  { icon: "school-outline", label: "Education", color: "#0A84FF", desc: "Tuition, Loans" },
-  { icon: "car-outline", label: "Transport", color: "#5E5CE6", desc: "Gas, Parking, Tolls" },
-  { icon: "medkit-outline", label: "Healthcare", color: "#FF3B30", desc: "Medical, Dental" },
-  { icon: "card-outline", label: "Banking", color: "#30D158", desc: "Loans, Credit cards" },
-  { icon: "globe-outline", label: "Government", color: "#8E8E93", desc: "Taxes, Fees" },
-  { icon: "receipt-outline", label: "Other", color: "#8E8E93", desc: "Misc bills" },
-] as const;
+import { CATEGORIES } from "./constants";
 
 export default function CategoriesScreen() {
   const router = useRouter();
@@ -39,7 +25,7 @@ export default function CategoriesScreen() {
           >
             <Ionicons name="chevron-back" size={24} color="#0A84FF" />
           </TouchableOpacity>
-          <Text className="text-xl font-bold text-ios-dark">Categories</Text>
+          <Text className="text-xl font-bold text-ios-dark">Select a Category</Text>
         </View>
 
         <ScrollView
@@ -55,10 +41,16 @@ export default function CategoriesScreen() {
           <View className="flex-row flex-wrap" style={{ gap: 12 }}>
             {CATEGORIES.map((cat) => (
               <TouchableOpacity
-                key={cat.label}
+                key={cat.id}
                 className="bg-white rounded-3xl border border-ios-border p-4"
                 style={[styles.card, { width: "47%" }]}
                 activeOpacity={0.7}
+                onPress={() =>
+                  router.push({
+                    pathname: "/(app)/categories/[category]",
+                    params: { category: cat.id },
+                  })
+                }
               >
                 <View
                   className="w-12 h-12 rounded-2xl items-center justify-center mb-3"

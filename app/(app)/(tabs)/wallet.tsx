@@ -8,27 +8,26 @@ import {
   RefreshControl,
   StyleSheet,
   Modal,
+  Image,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import * as ImagePicker from "expo-image-picker";
 import { useQuery, useMutation, useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { GlassButton } from "@/components/glass";
-import { DocumentCard, DocumentUploader } from "@/components/documents";
+import { DocumentCard } from "@/components/documents";
 import { EmptyState } from "@/components/common";
 import { useAuthStore } from "@/hooks/useAuth";
 import { Id } from "@/convex/_generated/dataModel";
 import { Config } from "@/constants/Config";
-
-type TabType = "documents" | "payments";
 
 export default function WalletScreen() {
   const router = useRouter();
   const { userId } = useAuthStore();
   const convexUserId = userId as Id<"users"> | null;
 
-  const [activeTab, setActiveTab] = useState<TabType>("documents");
   const [showUpload, setShowUpload] = useState(false);
   const [selectedType, setSelectedType] = useState<string>("");
   const [title, setTitle] = useState("");
@@ -121,6 +120,35 @@ export default function WalletScreen() {
 
   const verifiedCount = documents?.filter((d) => d.verified).length ?? 0;
 
+  const pickImage = async (useCamera: boolean) => {
+    try {
+      const options: ImagePicker.ImagePickerOptions = {
+        mediaTypes: ["images"],
+        allowsEditing: true,
+        quality: 0.8,
+        aspect: [16, 10],
+      };
+      const result = useCamera
+        ? await ImagePicker.launchCameraAsync(options)
+        : await ImagePicker.launchImageLibraryAsync(options);
+      if (!result.canceled && result.assets[0]) {
+        const uri = result.assets[0].uri;
+        if (!frontImageUri) setFrontImageUri(uri);
+        else setBackImageUri(uri);
+      }
+    } catch (error) {
+      Alert.alert("Error", "Failed to pick image. Please try again.");
+    }
+  };
+
+  const showUploadOptions = () => {
+    Alert.alert("Upload", "Choose a source", [
+      { text: "Gallery", onPress: () => pickImage(false) },
+      { text: "Camera", onPress: () => pickImage(true) },
+      { text: "Cancel", style: "cancel" },
+    ]);
+  };
+
   return (
     <View className="flex-1 bg-ios-bg">
       <SafeAreaView className="flex-1" edges={["top"]}>
@@ -175,109 +203,42 @@ export default function WalletScreen() {
             </View>
           </View>
 
-          {/* Tab Switcher */}
-          <View className="flex-row mx-5 mb-4 bg-ios-bg rounded-xl p-1 border border-ios-border">
-            <TouchableOpacity
-              onPress={() => setActiveTab("documents")}
-              className={`flex-1 py-2.5 rounded-lg ${
-                activeTab === "documents" ? "bg-white" : ""
-              }`}
-              style={activeTab === "documents" ? styles.tabShadow : undefined}
-            >
-              <Text
-                className={`text-center font-semibold text-sm ${
-                  activeTab === "documents" ? "text-ios-dark" : "text-ios-grey4"
-                }`}
-              >
-                Documents
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => setActiveTab("payments")}
-              className={`flex-1 py-2.5 rounded-lg ${
-                activeTab === "payments" ? "bg-white" : ""
-              }`}
-              style={activeTab === "payments" ? styles.tabShadow : undefined}
-            >
-              <Text
-                className={`text-center font-semibold text-sm ${
-                  activeTab === "payments" ? "text-ios-dark" : "text-ios-grey4"
-                }`}
-              >
-                Payment Assets
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          {activeTab === "documents" && (
-            <View className="px-5">
-              {documents && documents.length > 0 ? (
-                Object.entries(groupedDocs || {}).map(([type, docs]) => (
-                  <View key={type} className="mb-5">
-                    <Text className="text-ios-grey4 text-xs font-semibold uppercase tracking-wider mb-2">
-                      {Config.DOCUMENT_TYPES.find((t) => t.id === type)?.label || type}
-                    </Text>
-                    {docs?.map((doc) => (
-                      <DocumentCard
-                        key={doc._id}
-                        id={doc._id}
-                        title={doc.title}
-                        type={doc.type}
-                        issuer={doc.issuer}
-                        expiryDate={doc.expiryDate}
-                        verified={doc.verified}
-                        frontImageUrl={doc.frontImageUrl}
-                        onPress={() =>
-                          router.push({
-                            pathname: "/(app)/document/[id]",
-                            params: { id: doc._id },
-                          })
-                        }
-                      />
-                    ))}
-                  </View>
-                ))
-              ) : (
-                <EmptyState
-                  icon="documents-outline"
-                  title="No Documents Yet"
-                  description="Start by uploading your identity documents."
-                  action={
-                    <GlassButton
-                      title="Upload Document"
-                      onPress={() => setShowUpload(true)}
-                      variant="primary"
-                      size="md"
+          {/* Documents list */}
+          <View className="px-5">
+            {documents && documents.length > 0 ? (
+              Object.entries(groupedDocs || {}).map(([type, docs]) => (
+                <View key={type} className="mb-5">
+                  <Text className="text-ios-grey4 text-xs font-semibold uppercase tracking-wider mb-2">
+                    {Config.DOCUMENT_TYPES.find((t) => t.id === type)?.label || type}
+                  </Text>
+                  {docs?.map((doc) => (
+                    <DocumentCard
+                      key={doc._id}
+                      id={doc._id}
+                      title={doc.title}
+                      type={doc.type}
+                      issuer={doc.issuer}
+                      expiryDate={doc.expiryDate}
+                      verified={doc.verified}
+                      frontImageUrl={doc.frontImageUrl}
+                      onPress={() =>
+                        router.push({
+                          pathname: "/(app)/document/[id]",
+                          params: { id: doc._id },
+                        })
+                      }
                     />
-                  }
-                />
-              )}
-            </View>
-          )}
-
-          {activeTab === "payments" && (
-            <View className="px-5">
-              <View
-                className="bg-white rounded-3xl border border-ios-border p-5"
-                style={styles.cardShadow}
-              >
-                <View className="items-center py-6">
-                  <Ionicons name="card-outline" size={48} color="#C7C7CC" />
-                  <Text className="text-ios-dark font-semibold text-base mt-3">
-                    Payment Assets
-                  </Text>
-                  <Text className="text-ios-grey4 text-sm mt-1 text-center">
-                    Add bank accounts and credit cards{"\n"}for seamless payments
-                  </Text>
-                  <TouchableOpacity className="bg-primary rounded-2xl px-6 py-3 mt-4" style={styles.buttonShadow}>
-                    <Text className="text-white font-semibold text-sm">
-                      Add Payment Method
-                    </Text>
-                  </TouchableOpacity>
+                  ))}
                 </View>
-              </View>
-            </View>
-          )}
+              ))
+            ) : (
+              <EmptyState
+                icon="documents-outline"
+                title="No Documents Yet"
+                description="Tap the + button above to add your identity documents."
+              />
+            )}
+          </View>
         </ScrollView>
 
         {/* Upload Modal */}
@@ -299,7 +260,11 @@ export default function WalletScreen() {
                 <View className="w-14" />
               </View>
 
-              <ScrollView className="flex-1 px-5 pt-4" showsVerticalScrollIndicator={false}>
+              <ScrollView
+                className="flex-1 px-5 pt-4"
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={{ paddingBottom: 72 }}
+              >
                 {/* Document Type Selection */}
                 <Text className="text-ios-dark font-semibold text-base mb-3">
                   Document Type
@@ -335,47 +300,47 @@ export default function WalletScreen() {
                   ))}
                 </ScrollView>
 
-                {/* Add Methods */}
-                <View className="mb-5">
-                  {[
-                    { icon: "cloud-upload-outline", label: "Upload from Gallery", desc: "Choose an existing photo" },
-                    { icon: "camera-outline", label: "Scan Document", desc: "Take a photo of your document" },
-                    { icon: "globe-outline", label: "Retrieve from Web", desc: "Import from government portal" },
-                  ].map((method) => (
-                    <TouchableOpacity
-                      key={method.label}
-                      className="flex-row items-center bg-white rounded-2xl border border-ios-border p-4 mb-3"
-                      style={styles.cardShadow}
-                    >
-                      <View className="w-12 h-12 rounded-xl bg-primary/10 items-center justify-center mr-3">
-                        <Ionicons name={method.icon as any} size={24} color="#0A84FF" />
-                      </View>
-                      <View className="flex-1">
-                        <Text className="text-ios-dark font-medium text-base">
-                          {method.label}
-                        </Text>
-                        <Text className="text-ios-grey4 text-sm mt-0.5">
-                          {method.desc}
-                        </Text>
-                      </View>
-                      <Ionicons name="chevron-forward" size={20} color="#C7C7CC" />
-                    </TouchableOpacity>
-                  ))}
-                </View>
-
-                {/* Image Upload */}
-                <DocumentUploader
-                  label="Front Side"
-                  imageUri={frontImageUri}
-                  onImageSelected={setFrontImageUri}
-                  onRemove={() => setFrontImageUri("")}
-                />
-                <DocumentUploader
-                  label="Back Side (Optional)"
-                  imageUri={backImageUri}
-                  onImageSelected={setBackImageUri}
-                  onRemove={() => setBackImageUri("")}
-                />
+                {/* Minimal previews when images selected (no default placeholders) */}
+                {(frontImageUri || backImageUri) ? (
+                  <View className="flex-row gap-3 mb-5">
+                    <View className="flex-1">
+                      <Text className="text-ios-grey4 text-xs font-medium mb-1">Front</Text>
+                      {frontImageUri ? (
+                        <View className="relative rounded-xl overflow-hidden aspect-[16/10] bg-ios-bg">
+                          <Image source={{ uri: frontImageUri }} className="w-full h-full" resizeMode="cover" />
+                          <TouchableOpacity
+                            onPress={() => setFrontImageUri("")}
+                            className="absolute top-1 right-1 bg-black/50 rounded-full p-1"
+                          >
+                            <Ionicons name="close" size={14} color="#FFF" />
+                          </TouchableOpacity>
+                        </View>
+                      ) : (
+                        <View className="rounded-xl border border-dashed border-ios-border aspect-[16/10] bg-ios-bg items-center justify-center">
+                          <Text className="text-ios-grey4 text-xs">Empty</Text>
+                        </View>
+                      )}
+                    </View>
+                    <View className="flex-1">
+                      <Text className="text-ios-grey4 text-xs font-medium mb-1">Back (optional)</Text>
+                      {backImageUri ? (
+                        <View className="relative rounded-xl overflow-hidden aspect-[16/10] bg-ios-bg">
+                          <Image source={{ uri: backImageUri }} className="w-full h-full" resizeMode="cover" />
+                          <TouchableOpacity
+                            onPress={() => setBackImageUri("")}
+                            className="absolute top-1 right-1 bg-black/50 rounded-full p-1"
+                          >
+                            <Ionicons name="close" size={14} color="#FFF" />
+                          </TouchableOpacity>
+                        </View>
+                      ) : (
+                        <View className="rounded-xl border border-dashed border-ios-border aspect-[16/10] bg-ios-bg items-center justify-center">
+                          <Text className="text-ios-grey4 text-xs">Empty</Text>
+                        </View>
+                      )}
+                    </View>
+                  </View>
+                ) : null}
 
                 <GlassButton
                   title={uploading ? "Uploading..." : "Upload Document"}
@@ -384,9 +349,22 @@ export default function WalletScreen() {
                   disabled={!selectedType || !frontImageUri}
                   size="lg"
                   fullWidth
-                  className="mb-8"
+                  className="mb-4"
                 />
               </ScrollView>
+
+              {/* Minimal upload button: bottom centered */}
+              <View className="absolute bottom-0 left-0 right-0 px-5 pb-8 pt-4 bg-ios-bg items-center">
+                <TouchableOpacity
+                  onPress={showUploadOptions}
+                  className="flex-row items-center gap-2 px-5 py-2.5 rounded-full bg-white border border-ios-border"
+                  style={styles.cardShadow}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="cloud-upload-outline" size={18} color="#0A84FF" />
+                  <Text className="text-ios-dark text-sm font-medium">Upload</Text>
+                </TouchableOpacity>
+              </View>
             </SafeAreaView>
           </View>
         </Modal>
@@ -409,13 +387,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.15,
     shadowRadius: 16,
     elevation: 8,
-  },
-  tabShadow: {
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    elevation: 2,
   },
   cardShadow: {
     shadowColor: "#000",

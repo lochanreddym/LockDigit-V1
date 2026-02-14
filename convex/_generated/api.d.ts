@@ -13,6 +13,7 @@ import type * as bills from "../bills.js";
 import type * as cronHelpers from "../cronHelpers.js";
 import type * as crons from "../crons.js";
 import type * as documents from "../documents.js";
+import type * as identityRequests from "../identityRequests.js";
 import type * as notifications from "../notifications.js";
 import type * as payments from "../payments.js";
 import type * as subscriptions from "../subscriptions.js";
@@ -30,6 +31,7 @@ declare const fullApi: ApiFromModules<{
   cronHelpers: typeof cronHelpers;
   crons: typeof crons;
   documents: typeof documents;
+  identityRequests: typeof identityRequests;
   notifications: typeof notifications;
   payments: typeof payments;
   subscriptions: typeof subscriptions;

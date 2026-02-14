@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
   View,
   Text,
@@ -16,10 +16,15 @@ import * as SecureStoreHelper from "@/lib/secure-store";
 
 export default function PinLockScreen() {
   const router = useRouter();
+  const [pinLength, setPinLength] = useState(6);
   const [pin, setPin] = useState("");
   const [attempts, setAttempts] = useState(0);
   const shakeAnim = useRef(new Animated.Value(0)).current;
   const { setPinVerified } = useAuthStore();
+
+  useEffect(() => {
+    SecureStoreHelper.getPinLength().then(setPinLength);
+  }, []);
 
   const shake = () => {
     Animated.sequence([
@@ -52,17 +57,18 @@ export default function PinLockScreen() {
   };
 
   const handleDigitPress = async (digit: string) => {
+    if (pin.length >= pinLength) return;
     const newPin = pin + digit;
     setPin(newPin);
 
-    if (newPin.length === 4 || newPin.length === 6) {
+    if (newPin.length === pinLength) {
       const isValid = await validatePin(newPin);
       if (isValid) {
         setPinVerified(true);
         router.replace("/(app)/(tabs)/home");
-      } else if (newPin.length === 6) {
+      } else {
         shake();
-        setAttempts(attempts + 1);
+        setAttempts((prev) => prev + 1);
         setTimeout(() => setPin(""), 300);
 
         if (attempts >= 4) {
@@ -108,7 +114,7 @@ export default function PinLockScreen() {
             className="flex-row justify-center mb-10"
             style={{ transform: [{ translateX: shakeAnim }] }}
           >
-            {Array.from({ length: 6 }).map((_, i) => (
+            {Array.from({ length: pinLength }).map((_, i) => (
               <View
                 key={i}
                 className={`w-4 h-4 rounded-full mx-2.5 ${
@@ -169,14 +175,18 @@ export default function PinLockScreen() {
             onPress={() => {
               Alert.alert(
                 "Forgot PIN?",
-                "You'll need to verify your phone number again to reset your PIN.",
+                "Enter your registered number and verify with OTP to set a new PIN.",
                 [
                   { text: "Cancel", style: "cancel" },
                   {
                     text: "Reset",
                     onPress: async () => {
                       await SecureStoreHelper.clearAll();
-                      router.replace("/(auth)/login");
+                      useAuthStore.getState().logout();
+                      router.replace({
+                        pathname: "/(auth)/login",
+                        params: { resetPin: "true" },
+                      });
                     },
                     style: "destructive",
                   },

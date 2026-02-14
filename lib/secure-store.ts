@@ -3,6 +3,7 @@ import * as SecureStore from "expo-secure-store";
 const KEYS = {
   PIN_HASH: "lockdigit_pin_hash",
   PIN_SALT: "lockdigit_pin_salt",
+  PIN_LENGTH: "lockdigit_pin_length",
   DEVICE_ID: "lockdigit_device_id",
   AUTH_TOKEN: "lockdigit_auth_token",
   USER_ID: "lockdigit_user_id",
@@ -34,6 +35,16 @@ export async function getPinHash(): Promise<{
   const hash = await getItem(KEYS.PIN_HASH);
   const salt = await getItem(KEYS.PIN_SALT);
   return { hash, salt };
+}
+
+export async function storePinLength(length: string): Promise<void> {
+  await setItem(KEYS.PIN_LENGTH, length);
+}
+
+export async function getPinLength(): Promise<number> {
+  const value = await getItem(KEYS.PIN_LENGTH);
+  if (value === "4" || value === "6") return parseInt(value, 10);
+  return 6;
 }
 
 // Device ID

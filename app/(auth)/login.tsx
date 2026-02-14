@@ -11,7 +11,7 @@ import {
   StyleSheet,
   Image,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -32,9 +32,11 @@ const SUPPORTED_COUNTRY_CODES = ["+1", "+91"] as const;
 
 export default function LoginScreen() {
   const router = useRouter();
+  const { resetPin } = useLocalSearchParams<{ resetPin?: string }>();
   const [phone, setPhone] = useState("");
   const [countryCode, setCountryCode] = useState("+1");
   const [loading, setLoading] = useState(false);
+  const isResetPin = resetPin === "true";
 
   const maxDigits = COUNTRY_MAX_DIGITS[countryCode] ?? DEFAULT_MAX_DIGITS;
 
@@ -80,8 +82,9 @@ export default function LoginScreen() {
           params: {
             phone: formattedPhone,
             name: "",
-            isNewUser: "true",
+            isNewUser: isResetPin ? "false" : "true",
             simulatorTest: "true",
+            ...(isResetPin && { resetPin: "true" }),
           },
         });
         setLoading(false);
@@ -94,7 +97,8 @@ export default function LoginScreen() {
         params: {
           phone: formattedPhone,
           name: "",
-          isNewUser: "true",
+          isNewUser: isResetPin ? "false" : "true",
+          ...(isResetPin && { resetPin: "true" }),
         },
       });
     } catch (error: any) {
@@ -148,10 +152,12 @@ export default function LoginScreen() {
         >
           <View className="bg-ios-bgAlt px-5 py-8 items-center">
             <Text className="text-ios-darkAlt text-2xl font-bold mb-2 text-center">
-              Login or Create Account
+              {isResetPin ? "Reset your PIN" : "Login or Create Account"}
             </Text>
             <Text className="text-ios-grey5 text-base mb-6 text-center">
-              Enter your mobile number to proceed
+              {isResetPin
+                ? "Enter your registered number to receive a verification code"
+                : "Enter your mobile number to proceed"}
             </Text>
 
             {/* Phone Input */}

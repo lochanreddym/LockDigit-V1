@@ -18,6 +18,18 @@ export const getById = query({
   },
 });
 
+export const getByIdWithProfileUrl = query({
+  args: { userId: v.id("users") },
+  handler: async (ctx, args) => {
+    const user = await ctx.db.get(args.userId);
+    if (!user) return null;
+    const profileImageUrl = user.profileImageId
+      ? await ctx.storage.getUrl(user.profileImageId)
+      : null;
+    return { ...user, profileImageUrl };
+  },
+});
+
 export const getByDeviceId = query({
   args: { deviceId: v.string() },
   handler: async (ctx, args) => {
@@ -69,6 +81,8 @@ export const updateProfile = mutation({
     name: v.optional(v.string()),
     email: v.optional(v.string()),
     profileImageId: v.optional(v.id("_storage")),
+    dateOfBirth: v.optional(v.string()),
+    address: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const { userId, ...updates } = args;

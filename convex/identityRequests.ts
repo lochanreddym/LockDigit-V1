@@ -1,5 +1,16 @@
 import { v } from "convex/values";
-import { mutation } from "./_generated/server";
+import { mutation, query } from "./_generated/server";
+
+export const getByPhone = query({
+  args: { phone: v.string() },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("identityRequests")
+      .withIndex("by_phone", (q) => q.eq("phone", args.phone.trim()))
+      .order("desc")
+      .first();
+  },
+});
 
 export const submitManualRequest = mutation({
   args: {
