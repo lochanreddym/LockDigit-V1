@@ -12,6 +12,7 @@ export default function AuthLayout() {
     >
       <Stack.Screen name="login" />
       <Stack.Screen name="verify" />
+      <Stack.Screen name="verify-pin" />
       <Stack.Screen name="create-pin" />
       <Stack.Screen name="identity-verification" />
     </Stack>

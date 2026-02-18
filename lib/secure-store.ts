@@ -7,6 +7,7 @@ const KEYS = {
   DEVICE_ID: "lockdigit_device_id",
   AUTH_TOKEN: "lockdigit_auth_token",
   USER_ID: "lockdigit_user_id",
+  PHONE: "lockdigit_phone",
   HAS_COMPLETED_SETUP: "lockdigit_setup_complete",
 } as const;
 
@@ -72,6 +73,15 @@ export async function storeUserId(userId: string): Promise<void> {
 
 export async function getUserId(): Promise<string | null> {
   return await getItem(KEYS.USER_ID);
+}
+
+// Phone
+export async function storePhone(phone: string): Promise<void> {
+  await setItem(KEYS.PHONE, phone);
+}
+
+export async function getPhone(): Promise<string | null> {
+  return await getItem(KEYS.PHONE);
 }
 
 // Setup state

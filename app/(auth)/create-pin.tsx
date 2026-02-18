@@ -144,8 +144,10 @@ export default function CreatePinScreen() {
           userId: existingUser._id,
           pinHash: hash,
           pinSalt: salt,
+          pinLength,
         });
         await SecureStoreHelper.storeUserId(existingUser._id);
+        await SecureStoreHelper.storePhone(phone);
         await SecureStoreHelper.setSetupComplete();
         setAuthenticated(existingUser._id, phone);
       } else if (isNewUser === "true" && phone) {
@@ -155,10 +157,12 @@ export default function CreatePinScreen() {
           phone,
           pinHash: hash,
           pinSalt: salt,
+          pinLength,
           deviceId,
         });
 
         await SecureStoreHelper.storeUserId(userId);
+        await SecureStoreHelper.storePhone(phone);
         await SecureStoreHelper.setSetupComplete();
         setAuthenticated(userId, phone);
       } else {

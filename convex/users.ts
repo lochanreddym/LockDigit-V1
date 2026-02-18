@@ -47,10 +47,10 @@ export const createUser = mutation({
     phone: v.string(),
     pinHash: v.string(),
     pinSalt: v.string(),
+    pinLength: v.optional(v.number()),
     deviceId: v.string(),
   },
   handler: async (ctx, args) => {
-    // Check if phone already registered
     const existing = await ctx.db
       .query("users")
       .withIndex("by_phone", (q) => q.eq("phone", args.phone))
@@ -67,6 +67,7 @@ export const createUser = mutation({
       phoneVerified: true,
       pinHash: args.pinHash,
       pinSalt: args.pinSalt,
+      pinLength: args.pinLength,
       deviceId: args.deviceId,
       createdAt: Date.now(),
     });
@@ -108,11 +109,13 @@ export const updatePin = mutation({
     userId: v.id("users"),
     pinHash: v.string(),
     pinSalt: v.string(),
+    pinLength: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     await ctx.db.patch(args.userId, {
       pinHash: args.pinHash,
       pinSalt: args.pinSalt,
+      pinLength: args.pinLength,
     });
   },
 });

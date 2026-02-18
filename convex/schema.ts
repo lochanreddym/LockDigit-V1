@@ -9,6 +9,7 @@ export default defineSchema({
     phoneVerified: v.boolean(),
     pinHash: v.string(),
     pinSalt: v.string(),
+    pinLength: v.optional(v.number()),
     deviceId: v.string(),
     profileImageId: v.optional(v.id("_storage")),
     dateOfBirth: v.optional(v.string()),

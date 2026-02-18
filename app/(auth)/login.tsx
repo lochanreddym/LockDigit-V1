@@ -17,6 +17,8 @@ import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Constants from "expo-constants";
 import { sendOTP } from "@/lib/firebase";
+import { useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
 
 const isIOSSimulator =
   Platform.OS === "ios" && !Constants.isDevice;
@@ -37,6 +39,12 @@ export default function LoginScreen() {
   const [countryCode, setCountryCode] = useState("+1");
   const [loading, setLoading] = useState(false);
   const isResetPin = resetPin === "true";
+
+  const formattedPhone = phone ? `${countryCode}${phone.replace(/\D/g, "")}` : "";
+  const existingUser = useQuery(
+    api.users.getByPhone,
+    formattedPhone.length >= 8 ? { phone: formattedPhone } : "skip"
+  );
 
   const maxDigits = COUNTRY_MAX_DIGITS[countryCode] ?? DEFAULT_MAX_DIGITS;
 
@@ -73,16 +81,25 @@ export default function LoginScreen() {
 
     setLoading(true);
     try {
-      const formattedPhone = `${countryCode}${phone}`;
+      const fullPhone = `${countryCode}${phone}`;
+
+      // Returning user: skip OTP and go straight to PIN verification
+      if (!isResetPin && existingUser && existingUser.pinHash) {
+        router.push({
+          pathname: "/(auth)/verify-pin",
+          params: { phone: fullPhone },
+        });
+        setLoading(false);
+        return;
+      }
 
       if (isIOSSimulator) {
-        // Firebase Phone Auth can crash on iOS Simulator (reCAPTCHA/APNs). Skip native call and continue for testing.
         router.push({
           pathname: "/(auth)/verify",
           params: {
-            phone: formattedPhone,
+            phone: fullPhone,
             name: "",
-            isNewUser: isResetPin ? "false" : "true",
+            isNewUser: existingUser ? "false" : "true",
             simulatorTest: "true",
             ...(isResetPin && { resetPin: "true" }),
           },
@@ -91,13 +108,13 @@ export default function LoginScreen() {
         return;
       }
 
-      await sendOTP(formattedPhone);
+      await sendOTP(fullPhone);
       router.push({
         pathname: "/(auth)/verify",
         params: {
-          phone: formattedPhone,
+          phone: fullPhone,
           name: "",
-          isNewUser: isResetPin ? "false" : "true",
+          isNewUser: existingUser ? "false" : "true",
           ...(isResetPin && { resetPin: "true" }),
         },
       });
