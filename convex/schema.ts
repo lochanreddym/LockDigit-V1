@@ -50,6 +50,7 @@ export default defineSchema({
     userId: v.id("users"),
     bankName: v.string(),
     accountLast4: v.string(),
+    cardholderName: v.optional(v.string()),
     stripePaymentMethodId: v.optional(v.string()),
     isDefault: v.boolean(),
     type: v.optional(v.union(v.literal("bank"), v.literal("card"))),
@@ -115,8 +116,15 @@ export default defineSchema({
       v.literal("failed")
     ),
     stripePaymentIntentId: v.optional(v.string()),
+    paymentToken: v.string(),
+    verificationToken: v.optional(v.string()),
+    completedAt: v.optional(v.number()),
+    recipientPhone: v.optional(v.string()),
+    paymentMethod: v.optional(v.string()),
     createdAt: v.number(),
-  }).index("by_user", ["userId"]),
+  })
+    .index("by_user", ["userId"])
+    .index("by_payment_intent", ["stripePaymentIntentId"]),
 
   notifications: defineTable({
     userId: v.id("users"),

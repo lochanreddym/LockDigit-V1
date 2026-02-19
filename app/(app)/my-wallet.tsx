@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   TextInput,
   Alert,
   RefreshControl,
+  Image,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -17,11 +18,13 @@ import { api } from "@/convex/_generated/api";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuthStore } from "@/hooks/useAuth";
 import { Id } from "@/convex/_generated/dataModel";
+import { getBankLogo } from "@/lib/card-utils";
 
 type AccountWithType = {
   _id: Id<"bankAccounts">;
   bankName: string;
   accountLast4: string;
+  cardholderName?: string;
   type?: "bank" | "card";
   expiryMonth?: string;
   expiryYear?: string;
@@ -46,6 +49,7 @@ export default function MyWalletScreen() {
   ) as AccountWithType[] | undefined;
 
   const verifyPaymentPin = useMutation(api.payments.verifyPaymentPin);
+  const removeBankAccount = useMutation(api.payments.removeBankAccount);
 
   const defaultAccount = bankAccounts?.find((a) => a.paymentPinHash)?._id;
   const cards = bankAccounts?.filter((a) => a.type === "card") ?? [];
@@ -88,6 +92,27 @@ export default function MyWalletScreen() {
     } finally {
       setVerifying(false);
     }
+  };
+
+  const handleUnlink = (account: AccountWithType) => {
+    Alert.alert(
+      "Unlink Account",
+      `Remove ${account.bankName} ....${account.accountLast4} from your wallet?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Unlink",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await removeBankAccount({ accountId: account._id });
+            } catch {
+              Alert.alert("Error", "Could not unlink account.");
+            }
+          },
+        },
+      ]
+    );
   };
 
   return (
@@ -211,21 +236,6 @@ export default function MyWalletScreen() {
               </View>
               <Ionicons name="chevron-forward" size={20} color="#C7C7CC" />
             </TouchableOpacity>
-            <TouchableOpacity
-              className="flex-row items-center bg-white rounded-2xl border border-ios-border p-4"
-              style={styles.cardShadow}
-              activeOpacity={0.8}
-              onPress={() => router.push("/(app)/scan-to-pay")}
-            >
-              <View className="w-12 h-12 rounded-xl bg-orange-500/10 items-center justify-center mr-4">
-                <Ionicons name="qr-code" size={24} color="#FF9500" />
-              </View>
-              <View className="flex-1">
-                <Text className="text-ios-dark font-semibold">Pay merchant</Text>
-                <Text className="text-ios-grey4 text-sm mt-0.5">Scan QR or enter ID</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color="#C7C7CC" />
-            </TouchableOpacity>
           </View>
 
           {/* Saved Accounts */}
@@ -237,45 +247,61 @@ export default function MyWalletScreen() {
           <View className="px-5 gap-3">
             {cards.length > 0 &&
               cards.map((account) => (
-                <TouchableOpacity
+                <View
                   key={account._id}
-                  className="flex-row items-center bg-white rounded-2xl border border-ios-border p-4"
+                  className="bg-white rounded-2xl border border-ios-border overflow-hidden"
                   style={styles.cardShadow}
-                  activeOpacity={0.8}
                 >
-                  <View className="w-12 h-12 rounded-full bg-ios-bg items-center justify-center mr-4">
-                    <Ionicons name="card" size={22} color="#0A84FF" />
+                  <View className="flex-row items-center p-4">
+                    <Image
+                      source={getBankLogo(account.bankName)}
+                      className="w-12 h-12 rounded-xl mr-4"
+                      resizeMode="contain"
+                    />
+                    <View className="flex-1">
+                      <Text className="text-ios-dark font-semibold">
+                        {account.bankName}
+                      </Text>
+                      <Text className="text-ios-grey4 text-sm mt-0.5">
+                        {account.brand ? `${account.brand} ` : ""}....{account.accountLast4}
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      onPress={() => handleUnlink(account)}
+                      className="px-3 py-1.5 rounded-lg bg-red-50 border border-red-200"
+                      activeOpacity={0.7}
+                    >
+                      <Text className="text-red-500 text-xs font-semibold">Unlink</Text>
+                    </TouchableOpacity>
                   </View>
-                  <View className="flex-1">
-                    <Text className="text-ios-dark font-semibold">
-                      {account.brand || account.bankName} .... {account.accountLast4}
-                    </Text>
-                    <Text className="text-ios-grey4 text-sm mt-0.5">
-                      Expires {account.expiryMonth}/{account.expiryYear}
-                    </Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={20} color="#C7C7CC" />
-                </TouchableOpacity>
+                </View>
               ))}
             {banks.length > 0 &&
               banks.map((account) => (
-                <TouchableOpacity
+                <View
                   key={account._id}
-                  className="flex-row items-center bg-white rounded-2xl border border-ios-border p-4"
+                  className="bg-white rounded-2xl border border-ios-border overflow-hidden"
                   style={styles.cardShadow}
-                  activeOpacity={0.8}
                 >
-                  <View className="w-12 h-12 rounded-full bg-ios-bg items-center justify-center mr-4">
-                    <Ionicons name="business" size={22} color="#30D158" />
+                  <View className="flex-row items-center p-4">
+                    <View className="w-12 h-12 rounded-xl bg-green-500/10 items-center justify-center mr-4">
+                      <Ionicons name="business" size={22} color="#30D158" />
+                    </View>
+                    <View className="flex-1">
+                      <Text className="text-ios-dark font-semibold">{account.bankName}</Text>
+                      <Text className="text-ios-grey4 text-sm mt-0.5">
+                        ....{account.accountLast4}
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      onPress={() => handleUnlink(account)}
+                      className="px-3 py-1.5 rounded-lg bg-red-50 border border-red-200"
+                      activeOpacity={0.7}
+                    >
+                      <Text className="text-red-500 text-xs font-semibold">Unlink</Text>
+                    </TouchableOpacity>
                   </View>
-                  <View className="flex-1">
-                    <Text className="text-ios-dark font-semibold">{account.bankName}</Text>
-                    <Text className="text-ios-grey4 text-sm mt-0.5">
-                      .... {account.accountLast4}
-                    </Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={20} color="#C7C7CC" />
-                </TouchableOpacity>
+                </View>
               ))}
             {(!bankAccounts || bankAccounts.length === 0) && (
               <View className="bg-white rounded-2xl border border-ios-border p-6 items-center">

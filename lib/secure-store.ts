@@ -9,6 +9,7 @@ const KEYS = {
   USER_ID: "lockdigit_user_id",
   PHONE: "lockdigit_phone",
   HAS_COMPLETED_SETUP: "lockdigit_setup_complete",
+  FACE_ID_ENABLED: "lockdigit_face_id_enabled",
 } as const;
 
 export async function setItem(key: string, value: string): Promise<void> {
@@ -91,6 +92,16 @@ export async function setSetupComplete(): Promise<void> {
 
 export async function hasCompletedSetup(): Promise<boolean> {
   const value = await getItem(KEYS.HAS_COMPLETED_SETUP);
+  return value === "true";
+}
+
+// Face ID
+export async function setFaceIdEnabled(enabled: boolean): Promise<void> {
+  await setItem(KEYS.FACE_ID_ENABLED, enabled ? "true" : "false");
+}
+
+export async function isFaceIdEnabled(): Promise<boolean> {
+  const value = await getItem(KEYS.FACE_ID_ENABLED);
   return value === "true";
 }
 

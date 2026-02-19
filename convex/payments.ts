@@ -7,6 +7,18 @@ function hashPaymentPin(pin: string, salt: string): string {
   return crypto.createHash("sha256").update(`${salt}:${pin}`).digest("hex");
 }
 
+function generatePaymentToken(): string {
+  const crypto = require("crypto");
+  const ts = Date.now().toString();
+  const rand = crypto.randomBytes(6).toString("hex").toUpperCase();
+  return `T${ts}${rand}`;
+}
+
+function generateVerificationToken(): string {
+  const crypto = require("crypto");
+  return `V${crypto.randomBytes(16).toString("hex").toUpperCase()}`;
+}
+
 export const createTransaction = mutation({
   args: {
     userId: v.id("users"),
@@ -19,6 +31,9 @@ export const createTransaction = mutation({
     merchantName: v.optional(v.string()),
     description: v.string(),
     stripePaymentIntentId: v.optional(v.string()),
+    paymentToken: v.string(),
+    recipientPhone: v.optional(v.string()),
+    paymentMethod: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     return await ctx.db.insert("transactions", {
@@ -80,12 +95,16 @@ export const createPaymentIntent = action({
     currency: v.optional(v.string()),
     userId: v.id("users"),
     description: v.string(),
+    merchantName: v.optional(v.string()),
+    recipientPhone: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
     if (!stripeSecretKey) {
       throw new Error("STRIPE_SECRET_KEY not configured");
     }
+
+    const paymentToken = generatePaymentToken();
 
     const response = await fetch("https://api.stripe.com/v1/payment_intents", {
       method: "POST",
@@ -99,6 +118,7 @@ export const createPaymentIntent = action({
         "automatic_payment_methods[enabled]": "true",
         description: args.description,
         "metadata[userId]": args.userId,
+        "metadata[paymentToken]": paymentToken,
       }).toString(),
     });
 
@@ -109,19 +129,75 @@ export const createPaymentIntent = action({
 
     const paymentIntent = await response.json();
 
-    // Create a pending transaction record
     await ctx.runMutation(api.payments.createTransaction, {
       userId: args.userId,
       type: "payment",
       amount: args.amount,
       description: args.description,
+      merchantName: args.merchantName,
       stripePaymentIntentId: paymentIntent.id,
+      paymentToken,
+      recipientPhone: args.recipientPhone,
     });
 
     return {
       clientSecret: paymentIntent.client_secret,
       paymentIntentId: paymentIntent.id,
+      paymentToken,
     };
+  },
+});
+
+export const verifyAndCompletePayment = mutation({
+  args: {
+    stripePaymentIntentId: v.string(),
+    paymentToken: v.string(),
+    paymentMethod: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const transactions = await ctx.db
+      .query("transactions")
+      .withIndex("by_payment_intent", (q) =>
+        q.eq("stripePaymentIntentId", args.stripePaymentIntentId)
+      )
+      .collect();
+
+    const transaction = transactions[0];
+    if (!transaction) {
+      return { verified: false, error: "Transaction not found" };
+    }
+
+    if (transaction.paymentToken !== args.paymentToken) {
+      return { verified: false, error: "Token mismatch" };
+    }
+
+    const verificationToken = generateVerificationToken();
+    const completedAt = Date.now();
+
+    await ctx.db.patch(transaction._id, {
+      status: "completed",
+      verificationToken,
+      completedAt,
+      paymentMethod: args.paymentMethod,
+    });
+
+    return {
+      verified: true,
+      transactionId: transaction._id,
+      paymentToken: transaction.paymentToken,
+      verificationToken,
+      completedAt,
+      amount: transaction.amount,
+      merchantName: transaction.merchantName,
+      description: transaction.description,
+    };
+  },
+});
+
+export const getTransactionById = query({
+  args: { transactionId: v.id("transactions") },
+  handler: async (ctx, args) => {
+    return await ctx.db.get(args.transactionId);
   },
 });
 
@@ -141,6 +217,7 @@ export const addBankAccount = mutation({
     userId: v.id("users"),
     bankName: v.string(),
     accountLast4: v.string(),
+    cardholderName: v.optional(v.string()),
     stripePaymentMethodId: v.optional(v.string()),
     isDefault: v.boolean(),
     type: v.optional(v.union(v.literal("bank"), v.literal("card"))),

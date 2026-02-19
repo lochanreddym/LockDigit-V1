@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -18,6 +18,7 @@ import { Id } from "@/convex/_generated/dataModel";
 import * as SecureStoreHelper from "@/lib/secure-store";
 import { signOutFirebase } from "@/lib/firebase";
 import { maskString } from "@/lib/utils";
+import * as LocalAuthentication from "expo-local-authentication";
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -36,6 +37,45 @@ export default function ProfileScreen() {
     api.subscriptions.getActiveByUser,
     convexUserId ? { userId: convexUserId } : "skip"
   );
+
+  const [biometricEnabled, setBiometricEnabled] = useState(false);
+  const [biometricSupported, setBiometricSupported] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      const compatible = await LocalAuthentication.hasHardwareAsync();
+      const enrolled = await LocalAuthentication.isEnrolledAsync();
+      setBiometricSupported(compatible && enrolled);
+      const enabled = await SecureStoreHelper.isFaceIdEnabled();
+      setBiometricEnabled(enabled);
+    })();
+  }, []);
+
+  const toggleBiometric = async () => {
+    if (!biometricSupported) {
+      Alert.alert(
+        "Not Available",
+        "Face ID / biometric authentication is not set up on this device. Enable it in your device Settings first."
+      );
+      return;
+    }
+    if (!biometricEnabled) {
+      const result = await LocalAuthentication.authenticateAsync({
+        promptMessage: "Verify to enable Face ID for payments",
+        fallbackLabel: "Cancel",
+        disableDeviceFallback: true,
+      });
+      if (result.success) {
+        await SecureStoreHelper.setFaceIdEnabled(true);
+        setBiometricEnabled(true);
+        Alert.alert("Enabled", "Face ID is now enabled for credit card payment verification.");
+      }
+    } else {
+      await SecureStoreHelper.setFaceIdEnabled(false);
+      setBiometricEnabled(false);
+      Alert.alert("Disabled", "Face ID has been disabled. You'll use your PIN for all payment verification.");
+    }
+  };
 
   const handleLogout = () => {
     Alert.alert(
@@ -102,10 +142,10 @@ export default function ProfileScreen() {
         },
         {
           icon: "finger-print-outline" as const,
-          label: "Biometric Login",
+          label: "Face ID for Payments",
           color: "#0A84FF",
-          value: "Coming soon",
-          onPress: () => {},
+          value: biometricEnabled ? "On" : "Off",
+          onPress: toggleBiometric,
         },
         {
           icon: "phone-portrait-outline" as const,
