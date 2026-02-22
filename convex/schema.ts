@@ -105,7 +105,9 @@ export default defineSchema({
     type: v.union(
       v.literal("payment"),
       v.literal("scan_to_pay"),
-      v.literal("bill_payment")
+      v.literal("bill_payment"),
+      v.literal("transfer"),
+      v.literal("wire_transfer")
     ),
     amount: v.number(),
     merchantName: v.optional(v.string()),
@@ -116,7 +118,7 @@ export default defineSchema({
       v.literal("failed")
     ),
     stripePaymentIntentId: v.optional(v.string()),
-    paymentToken: v.string(),
+    paymentToken: v.optional(v.string()),
     verificationToken: v.optional(v.string()),
     completedAt: v.optional(v.number()),
     recipientPhone: v.optional(v.string()),
@@ -143,6 +145,30 @@ export default defineSchema({
   })
     .index("by_user", ["userId"])
     .index("by_user_unread", ["userId", "read"]),
+
+  savedRecipients: defineTable({
+    userId: v.id("users"),
+    recipientName: v.string(),
+    accountLast4: v.string(),
+    routingNumber: v.string(),
+    bankName: v.string(),
+    createdAt: v.number(),
+  }).index("by_user", ["userId"]),
+
+  internationalRecipients: defineTable({
+    userId: v.id("users"),
+    firstName: v.string(),
+    lastName: v.string(),
+    nickname: v.optional(v.string()),
+    address: v.string(),
+    city: v.string(),
+    zipCode: v.string(),
+    country: v.string(),
+    accountLast4: v.string(),
+    swiftCode: v.string(),
+    bankName: v.string(),
+    createdAt: v.number(),
+  }).index("by_user", ["userId"]),
 
   identityRequests: defineTable({
     fullName: v.string(),

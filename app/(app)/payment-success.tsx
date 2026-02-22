@@ -16,7 +16,10 @@ import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { formatCurrency } from "@/lib/utils";
 import { Id } from "@/convex/_generated/dataModel";
-import * as Clipboard from "expo-clipboard";
+let Clipboard: any = null;
+try {
+  Clipboard = require("expo-clipboard");
+} catch {}
 
 function formatReceiptDate(timestamp: number): string {
   const d = new Date(timestamp);
@@ -44,7 +47,9 @@ export default function PaymentSuccessScreen() {
   );
 
   const copyToClipboard = async (text: string, field: string) => {
-    await Clipboard.setStringAsync(text);
+    if (Clipboard) {
+      await Clipboard.setStringAsync(text);
+    }
     setCopiedField(field);
     setTimeout(() => setCopiedField(null), 2000);
   };

@@ -2,21 +2,30 @@ import { v } from "convex/values";
 import { action, mutation, query } from "./_generated/server";
 import { api } from "./_generated/api";
 
-function hashPaymentPin(pin: string, salt: string): string {
-  const crypto = require("crypto");
-  return crypto.createHash("sha256").update(`${salt}:${pin}`).digest("hex");
+function toHex(buffer: ArrayBuffer): string {
+  return Array.from(new Uint8Array(buffer))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+async function hashPaymentPin(pin: string, salt: string): Promise<string> {
+  const data = new TextEncoder().encode(`${salt}:${pin}`);
+  const hash = await crypto.subtle.digest("SHA-256", data);
+  return toHex(hash);
 }
 
 function generatePaymentToken(): string {
-  const crypto = require("crypto");
   const ts = Date.now().toString();
-  const rand = crypto.randomBytes(6).toString("hex").toUpperCase();
+  const bytes = new Uint8Array(6);
+  crypto.getRandomValues(bytes);
+  const rand = toHex(bytes.buffer).toUpperCase();
   return `T${ts}${rand}`;
 }
 
 function generateVerificationToken(): string {
-  const crypto = require("crypto");
-  return `V${crypto.randomBytes(16).toString("hex").toUpperCase()}`;
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return `V${toHex(bytes.buffer).toUpperCase()}`;
 }
 
 export const createTransaction = mutation({
@@ -25,7 +34,9 @@ export const createTransaction = mutation({
     type: v.union(
       v.literal("payment"),
       v.literal("scan_to_pay"),
-      v.literal("bill_payment")
+      v.literal("bill_payment"),
+      v.literal("transfer"),
+      v.literal("wire_transfer")
     ),
     amount: v.number(),
     merchantName: v.optional(v.string()),
@@ -282,7 +293,7 @@ export const verifyPaymentPin = mutation({
   handler: async (ctx, args) => {
     const account = await ctx.db.get(args.accountId);
     if (!account?.paymentPinHash || !account?.paymentPinSalt) return false;
-    const hash = hashPaymentPin(args.pin, account.paymentPinSalt);
+    const hash = await hashPaymentPin(args.pin, account.paymentPinSalt);
     return hash === account.paymentPinHash;
   },
 });
@@ -291,5 +302,99 @@ export const removeBankAccount = mutation({
   args: { accountId: v.id("bankAccounts") },
   handler: async (ctx, args) => {
     await ctx.db.delete(args.accountId);
+  },
+});
+
+// Saved recipients (domestic)
+export const listSavedRecipients = query({
+  args: { userId: v.id("users") },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("savedRecipients")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .order("desc")
+      .collect();
+  },
+});
+
+export const addSavedRecipient = mutation({
+  args: {
+    userId: v.id("users"),
+    recipientName: v.string(),
+    accountLast4: v.string(),
+    routingNumber: v.string(),
+    bankName: v.string(),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db.insert("savedRecipients", {
+      ...args,
+      createdAt: Date.now(),
+    });
+  },
+});
+
+// International recipients
+export const listInternationalRecipients = query({
+  args: { userId: v.id("users") },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("internationalRecipients")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .order("desc")
+      .collect();
+  },
+});
+
+export const addInternationalRecipient = mutation({
+  args: {
+    userId: v.id("users"),
+    firstName: v.string(),
+    lastName: v.string(),
+    nickname: v.optional(v.string()),
+    address: v.string(),
+    city: v.string(),
+    zipCode: v.string(),
+    country: v.string(),
+    accountLast4: v.string(),
+    swiftCode: v.string(),
+    bankName: v.string(),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db.insert("internationalRecipients", {
+      ...args,
+      createdAt: Date.now(),
+    });
+  },
+});
+
+// Local transfer (between accounts, no Stripe needed)
+export const createLocalTransfer = mutation({
+  args: {
+    userId: v.id("users"),
+    amount: v.number(),
+    description: v.string(),
+    type: v.union(v.literal("transfer"), v.literal("wire_transfer")),
+    merchantName: v.optional(v.string()),
+    paymentMethod: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const paymentToken = generatePaymentToken();
+    const verificationToken = generateVerificationToken();
+
+    const txId = await ctx.db.insert("transactions", {
+      userId: args.userId,
+      type: args.type,
+      amount: args.amount,
+      description: args.description,
+      merchantName: args.merchantName,
+      paymentMethod: args.paymentMethod,
+      paymentToken,
+      verificationToken,
+      status: "completed",
+      completedAt: Date.now(),
+      createdAt: Date.now(),
+    });
+
+    return { transactionId: txId, verified: true };
   },
 });

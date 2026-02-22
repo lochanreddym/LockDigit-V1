@@ -18,7 +18,10 @@ import { Id } from "@/convex/_generated/dataModel";
 import * as SecureStoreHelper from "@/lib/secure-store";
 import { signOutFirebase } from "@/lib/firebase";
 import { maskString } from "@/lib/utils";
-import * as LocalAuthentication from "expo-local-authentication";
+let LocalAuthentication: any = null;
+try {
+  LocalAuthentication = require("expo-local-authentication");
+} catch {}
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -43,9 +46,11 @@ export default function ProfileScreen() {
 
   useEffect(() => {
     (async () => {
-      const compatible = await LocalAuthentication.hasHardwareAsync();
-      const enrolled = await LocalAuthentication.isEnrolledAsync();
-      setBiometricSupported(compatible && enrolled);
+      if (LocalAuthentication) {
+        const compatible = await LocalAuthentication.hasHardwareAsync();
+        const enrolled = await LocalAuthentication.isEnrolledAsync();
+        setBiometricSupported(compatible && enrolled);
+      }
       const enabled = await SecureStoreHelper.isFaceIdEnabled();
       setBiometricEnabled(enabled);
     })();
@@ -60,6 +65,10 @@ export default function ProfileScreen() {
       return;
     }
     if (!biometricEnabled) {
+      if (!LocalAuthentication) {
+        Alert.alert("Not Available", "Biometric authentication requires a native rebuild.");
+        return;
+      }
       const result = await LocalAuthentication.authenticateAsync({
         promptMessage: "Verify to enable Face ID for payments",
         fallbackLabel: "Cancel",

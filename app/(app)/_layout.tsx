@@ -29,6 +29,10 @@ export default function AppLayout() {
       <Stack.Screen name="receive-money" />
       <Stack.Screen name="send-to-mobile" />
       <Stack.Screen name="send-to-mobile-amount" />
+      <Stack.Screen name="bank-transfer" />
+      <Stack.Screen name="self-transfer" />
+      <Stack.Screen name="send-to-account" />
+      <Stack.Screen name="send-internationally" />
     </Stack>
   );
 }

@@ -24,7 +24,10 @@ import { useAuthStore } from "@/hooks/useAuth";
 import { Id } from "@/convex/_generated/dataModel";
 import { validatePin } from "@/lib/pin-manager";
 import { getPinLength, isFaceIdEnabled } from "@/lib/secure-store";
-import * as LocalAuthentication from "expo-local-authentication";
+let LocalAuthentication: any = null;
+try {
+  LocalAuthentication = require("expo-local-authentication");
+} catch {}
 
 const HIGH_AMOUNT_THRESHOLD = 50000;
 
@@ -63,9 +66,11 @@ export default function SendToMobileAmountScreen() {
       const len = await getPinLength();
       setPinLength(len);
       const faceIdOn = await isFaceIdEnabled();
-      const compatible = await LocalAuthentication.hasHardwareAsync();
-      const enrolled = await LocalAuthentication.isEnrolledAsync();
-      setFaceIdAvailable(faceIdOn && compatible && enrolled);
+      if (LocalAuthentication) {
+        const compatible = await LocalAuthentication.hasHardwareAsync();
+        const enrolled = await LocalAuthentication.isEnrolledAsync();
+        setFaceIdAvailable(faceIdOn && compatible && enrolled);
+      }
     })();
   }, []);
 
@@ -147,6 +152,7 @@ export default function SendToMobileAmountScreen() {
   );
 
   const handleFaceId = async () => {
+    if (!LocalAuthentication) return;
     const result = await LocalAuthentication.authenticateAsync({
       promptMessage: "Verify your identity to confirm payment",
       fallbackLabel: "Use PIN",

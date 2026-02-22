@@ -23,7 +23,7 @@ const TRANSFER_OPTIONS = [
     icon: "business-outline" as const,
     label: "To Bank &\nSelf A/c",
     colors: ["#7C3AED", "#6D28D9"] as const,
-    route: null,
+    route: "/(app)/bank-transfer" as const,
   },
   {
     icon: "arrow-down-circle-outline" as const,
