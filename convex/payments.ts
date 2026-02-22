@@ -88,6 +88,37 @@ export const getRecentTransactions = query({
   },
 });
 
+export const getRecentTransferContacts = query({
+  args: { userId: v.id("users") },
+  handler: async (ctx, args) => {
+    const transactions = await ctx.db
+      .query("transactions")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .order("desc")
+      .take(100);
+
+    const seen = new Set<string>();
+    const contacts: {
+      phone: string;
+      name: string;
+      lastTransferAt: number;
+    }[] = [];
+
+    for (const tx of transactions) {
+      if (tx.recipientPhone && !seen.has(tx.recipientPhone)) {
+        seen.add(tx.recipientPhone);
+        contacts.push({
+          phone: tx.recipientPhone,
+          name: tx.merchantName || tx.recipientPhone,
+          lastTransferAt: tx.completedAt || tx.createdAt,
+        });
+      }
+    }
+
+    return contacts;
+  },
+});
+
 // Stripe Payment Intent creation via server action
 export const createPaymentIntent = action({
   args: {

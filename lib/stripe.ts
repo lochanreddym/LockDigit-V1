@@ -17,18 +17,19 @@ export interface PaymentIntentResult {
 export interface QRPaymentData {
   merchantId: string;
   merchantName: string;
-  amount: number; // in cents
+  amount: number; // in cents, 0 means sender should enter amount
   currency: string;
   reference?: string;
+  isReceiveMoneyQR?: boolean;
 }
 
 /**
- * Parse a merchant QR code payload.
- * Expected format: lockdigit://pay?merchant=X&name=Y&amount=Z&currency=USD&ref=R
+ * Parse a merchant/receive-money QR code payload.
+ * Merchant format: lockdigit://pay?merchant=X&name=Y&amount=Z&currency=USD&ref=R
+ * Receive money format: lockdigit://pay?merchant=PHONE&name=NAME (no amount)
  */
 export function parseQRPaymentData(qrData: string): QRPaymentData | null {
   try {
-    // Handle lockdigit:// scheme
     if (qrData.startsWith("lockdigit://pay")) {
       const url = new URL(qrData);
       const merchantId = url.searchParams.get("merchant");
@@ -37,18 +38,20 @@ export function parseQRPaymentData(qrData: string): QRPaymentData | null {
       const currency = url.searchParams.get("currency") || "USD";
       const reference = url.searchParams.get("ref") || undefined;
 
-      if (!merchantId || !merchantName || !amount) return null;
+      if (!merchantId || !merchantName) return null;
+
+      const isReceiveMoneyQR = !amount;
 
       return {
         merchantId,
         merchantName: decodeURIComponent(merchantName),
-        amount: parseInt(amount, 10),
+        amount: amount ? parseInt(amount, 10) : 0,
         currency,
         reference,
+        isReceiveMoneyQR,
       };
     }
 
-    // Try JSON format as fallback
     const data = JSON.parse(qrData);
     if (data.merchantId && data.amount) {
       return data as QRPaymentData;

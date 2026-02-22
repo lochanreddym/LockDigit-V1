@@ -289,7 +289,7 @@ export default function HomeScreen() {
             <Text className="text-ios-dark font-semibold text-lg mb-3">
               Quick Actions
             </Text>
-            <View className="flex-row gap-3">
+            <View className="flex-row flex-wrap" style={{ gap: 12 }}>
               {[
                 {
                   icon: "receipt-outline" as const,
@@ -304,6 +304,12 @@ export default function HomeScreen() {
                   onPress: () => router.push("/(app)/(tabs)/wallet"),
                 },
                 {
+                  icon: "swap-horizontal-outline" as const,
+                  label: "Money Transfer",
+                  color: "#7C3AED",
+                  onPress: () => router.push("/(app)/money-transfer"),
+                },
+                {
                   icon: "card-outline" as const,
                   label: "Manage Payments",
                   color: "#5E5CE6",
@@ -313,8 +319,8 @@ export default function HomeScreen() {
                 <TouchableOpacity
                   key={action.label}
                   onPress={action.onPress}
-                  className="flex-1"
                   activeOpacity={0.8}
+                  style={styles.actionCardWrapper}
                 >
                   <View
                     className="bg-white rounded-3xl border border-ios-border p-4 items-center justify-center"
@@ -420,6 +426,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 4,
+  },
+  actionCardWrapper: {
+    width: "48%",
   },
   actionCard: {
     height: 120,

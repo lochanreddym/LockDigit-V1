@@ -47,6 +47,8 @@ export default function ScanToPayScreen() {
     typeof parseQRPaymentData
   > | null>(null);
   const [processing, setProcessing] = useState(false);
+  const [showAmountEntry, setShowAmountEntry] = useState(false);
+  const [sendAmountCents, setSendAmountCents] = useState("");
   const [showManualEntry, setShowManualEntry] = useState(false);
   const [manualMerchantId, setManualMerchantId] = useState("");
   const [manualMerchantName, setManualMerchantName] = useState("");
@@ -132,13 +134,57 @@ export default function ScanToPayScreen() {
     }
   };
 
+  const handleSendAmountChange = (text: string) => {
+    const digits = text.replace(/[^0-9]/g, "").replace(/^0+/, "");
+    setSendAmountCents(digits);
+  };
+
+  const formattedSendAmount = (() => {
+    const cents = parseInt(sendAmountCents || "0", 10);
+    return (cents / 100).toFixed(2);
+  })();
+
+  const handleConfirmSendAmount = () => {
+    const amountCents = parseInt(sendAmountCents || "0", 10);
+    if (amountCents <= 0) {
+      Alert.alert("Invalid Amount", "Please enter an amount to send.");
+      return;
+    }
+    if (!paymentData) return;
+
+    const proceed = () => {
+      setPaymentData({ ...paymentData, amount: amountCents, isReceiveMoneyQR: false });
+      setShowAmountEntry(false);
+      setSendAmountCents("");
+    };
+
+    if (amountCents >= HIGH_AMOUNT_THRESHOLD) {
+      Alert.alert(
+        "Large Transfer",
+        `You're about to send $${(amountCents / 100).toFixed(2)} to ${paymentData.merchantName}. Are you sure?`,
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Yes, Proceed", onPress: proceed },
+        ]
+      );
+    } else {
+      proceed();
+    }
+  };
+
   const handleBarCodeScanned = (result: BarcodeScanningResult) => {
     if (scanned) return;
     setScanned(true);
 
     const data = parseQRPaymentData(result.data);
     if (data) {
-      setPaymentData(data);
+      if (data.isReceiveMoneyQR) {
+        setPaymentData(data);
+        setShowAmountEntry(true);
+        setSendAmountCents("");
+      } else {
+        setPaymentData(data);
+      }
     } else {
       Alert.alert(
         "Invalid QR Code",
@@ -299,6 +345,97 @@ export default function ScanToPayScreen() {
     );
   }
 
+  // Amount entry view for receive-money QR codes
+  if (paymentData && showAmountEntry) {
+    return (
+      <View className="flex-1 bg-ios-bg">
+        <SafeAreaView className="flex-1">
+          <View className="flex-row items-center px-5 py-3">
+            <TouchableOpacity
+              onPress={() => {
+                setPaymentData(null);
+                setScanned(false);
+                setShowAmountEntry(false);
+                setSendAmountCents("");
+              }}
+              className="mr-3 p-1"
+            >
+              <Ionicons name="chevron-back" size={24} color="#0A84FF" />
+            </TouchableOpacity>
+            <Text className="text-xl font-bold text-ios-dark">Send Money</Text>
+          </View>
+
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            className="flex-1"
+          >
+            <View className="flex-1 px-5 justify-center">
+              <View className="items-center mb-6">
+                <View className="w-20 h-20 rounded-full bg-purple-500/10 items-center justify-center mb-4">
+                  <Ionicons name="person" size={36} color="#7C3AED" />
+                </View>
+                <Text className="text-ios-grey4 text-sm">Sending to</Text>
+                <Text className="text-ios-dark text-xl font-bold mt-1">
+                  {paymentData.merchantName}
+                </Text>
+                <Text className="text-ios-grey4 text-sm mt-1">
+                  {paymentData.merchantId}
+                </Text>
+              </View>
+
+              <View
+                className="bg-white rounded-3xl border border-ios-border p-5 mb-6"
+                style={styles.cardShadow}
+              >
+                <Text className="text-ios-grey4 text-sm mb-3 text-center">
+                  Enter amount to send
+                </Text>
+                <View className="flex-row items-center justify-center">
+                  <Text className="text-ios-dark text-4xl font-bold">$</Text>
+                  <TextInput
+                    value={formattedSendAmount}
+                    onChangeText={handleSendAmountChange}
+                    placeholder="0.00"
+                    keyboardType="number-pad"
+                    className="text-ios-dark text-4xl font-bold ml-1"
+                    placeholderTextColor="#C7C7CC"
+                    style={{ minWidth: 120 }}
+                    autoFocus
+                    selection={{
+                      start: formattedSendAmount.length,
+                      end: formattedSendAmount.length,
+                    }}
+                  />
+                </View>
+              </View>
+
+              <GlassButton
+                title={`Send $${formattedSendAmount}`}
+                onPress={handleConfirmSendAmount}
+                size="lg"
+                fullWidth
+                icon={<Ionicons name="send" size={20} color="#FFFFFF" />}
+                className="mb-3"
+              />
+              <GlassButton
+                title="Cancel"
+                onPress={() => {
+                  setPaymentData(null);
+                  setScanned(false);
+                  setShowAmountEntry(false);
+                  setSendAmountCents("");
+                }}
+                variant="secondary"
+                size="lg"
+                fullWidth
+              />
+            </View>
+          </KeyboardAvoidingView>
+        </SafeAreaView>
+      </View>
+    );
+  }
+
   // Payment confirmation view
   if (paymentData) {
     return (
@@ -321,7 +458,7 @@ export default function ScanToPayScreen() {
           <View className="flex-1 px-5 justify-center">
             <View className="items-center mb-6">
               <View className="w-20 h-20 rounded-full bg-primary/10 items-center justify-center mb-4">
-                <Ionicons name="qr-code" size={40} color="#0A84FF" />
+                <Ionicons name="send" size={36} color="#0A84FF" />
               </View>
             </View>
 
@@ -330,7 +467,7 @@ export default function ScanToPayScreen() {
               style={styles.cardShadow}
             >
               <View className="items-center py-4">
-                <Text className="text-ios-grey4 text-sm">Paying to</Text>
+                <Text className="text-ios-grey4 text-sm">Sending to</Text>
                 <Text className="text-ios-dark text-xl font-bold mt-1">
                   {paymentData.merchantName}
                 </Text>
