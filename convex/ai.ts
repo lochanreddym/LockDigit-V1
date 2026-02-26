@@ -6,64 +6,84 @@ import { action } from "./_generated/server";
  * All API calls are server-side to keep the API key secure.
  */
 
+async function callOpenAIVision(
+  imageUrl: string,
+  documentType: string,
+  includeRawText: boolean
+): Promise<Record<string, unknown>> {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    throw new Error("OPENAI_API_KEY not configured");
+  }
+
+  const systemContent = includeRawText
+    ? `You are a document data extraction assistant. Extract structured data from the provided ${documentType} image. Return a JSON object with the following fields where applicable: name, documentNumber, issuer, issueDate, expiryDate, dateOfBirth, address, rawText (full OCR text including any MRZ lines), and any other relevant fields. Dates should be in ISO 8601 format (YYYY-MM-DD). If a field cannot be determined, set it to null. Include rawText with the complete OCR output for MRZ parsing.`
+    : `You are a document data extraction assistant. Extract structured data from the provided ${documentType} image. Return a JSON object with the following fields where applicable: name, documentNumber, issuer, issueDate, expiryDate, dateOfBirth, address, and any other relevant fields. Dates should be in ISO 8601 format (YYYY-MM-DD). If a field cannot be determined, set it to null.`;
+
+  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "gpt-4o",
+      messages: [
+        { role: "system", content: systemContent },
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: `Please extract all relevant information from this ${documentType}.`,
+            },
+            {
+              type: "image_url",
+              image_url: { url: imageUrl },
+            },
+          ],
+        },
+      ],
+      max_tokens: 1000,
+      response_format: { type: "json_object" },
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`OpenAI error: ${error}`);
+  }
+
+  const data = await response.json();
+  const content = data.choices?.[0]?.message?.content;
+
+  if (!content) {
+    throw new Error("No response from OpenAI");
+  }
+
+  return JSON.parse(content) as Record<string, unknown>;
+}
+
 export const extractDocumentData = action({
   args: {
     imageUrl: v.string(),
     documentType: v.string(),
   },
   handler: async (_ctx, args) => {
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) {
-      throw new Error("OPENAI_API_KEY not configured");
-    }
+    return await callOpenAIVision(args.imageUrl, args.documentType, false);
+  },
+});
 
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "gpt-4o",
-        messages: [
-          {
-            role: "system",
-            content: `You are a document data extraction assistant. Extract structured data from the provided ${args.documentType} image. Return a JSON object with the following fields where applicable: name, documentNumber, issuer, issueDate, expiryDate, dateOfBirth, address, and any other relevant fields. Dates should be in ISO 8601 format (YYYY-MM-DD). If a field cannot be determined, set it to null.`,
-          },
-          {
-            role: "user",
-            content: [
-              {
-                type: "text",
-                text: `Please extract all relevant information from this ${args.documentType}.`,
-              },
-              {
-                type: "image_url",
-                image_url: {
-                  url: args.imageUrl,
-                },
-              },
-            ],
-          },
-        ],
-        max_tokens: 1000,
-        response_format: { type: "json_object" },
-      }),
-    });
-
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`OpenAI error: ${error}`);
-    }
-
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content;
-
-    if (!content) {
-      throw new Error("No response from OpenAI");
-    }
-
-    return JSON.parse(content);
+export const extractDocumentDataFromBase64 = action({
+  args: {
+    imageBase64: v.string(),
+    documentType: v.string(),
+    imageMimeType: v.optional(v.string()),
+  },
+  handler: async (_ctx, args) => {
+    const mime = args.imageMimeType ?? "image/jpeg";
+    const dataUrl = `data:${mime};base64,${args.imageBase64}`;
+    return await callOpenAIVision(dataUrl, args.documentType, true);
   },
 });
 

@@ -30,7 +30,10 @@ type AccountWithType = {
   expiryYear?: string;
   brand?: string;
   paymentPinHash?: string;
+  isFrozen?: boolean;
 };
+
+const MAX_PAYMENT_PIN_ATTEMPTS = 5;
 
 export default function MyWalletScreen() {
   const router = useRouter();
@@ -42,6 +45,7 @@ export default function MyWalletScreen() {
   const [balancePin, setBalancePin] = useState("");
   const [balanceUnlocked, setBalanceUnlocked] = useState(false);
   const [verifying, setVerifying] = useState(false);
+  const [pinAttempts, setPinAttempts] = useState(0);
 
   const bankAccounts = useQuery(
     api.payments.listBankAccounts,
@@ -50,6 +54,7 @@ export default function MyWalletScreen() {
 
   const verifyPaymentPin = useMutation(api.payments.verifyPaymentPin);
   const removeBankAccount = useMutation(api.payments.removeBankAccount);
+  const setAccountFrozen = useMutation(api.payments.setAccountFrozen);
 
   const defaultAccount = bankAccounts?.find((a) => a.paymentPinHash)?._id;
   const cards = bankAccounts?.filter((a) => a.type === "card") ?? [];
@@ -72,6 +77,7 @@ export default function MyWalletScreen() {
     }
     setBalancePin("");
     setBalanceUnlocked(false);
+    setPinAttempts(0);
     setViewBalanceModal(true);
   };
 
@@ -79,12 +85,32 @@ export default function MyWalletScreen() {
     if (!defaultAccount || balancePin.length < 4) return;
     setVerifying(true);
     try {
-      const ok = await verifyPaymentPin({ accountId: defaultAccount, pin: balancePin });
-      if (ok) {
+      const result = await verifyPaymentPin({
+        accountId: defaultAccount,
+        pin: balancePin,
+      });
+      if (result.success) {
         setBalanceUnlocked(true);
+        setPinAttempts(0);
         setTimeout(() => setViewBalanceModal(false), 600);
       } else {
-        Alert.alert("Wrong PIN", "Try again.");
+        const attemptsMade =
+          typeof result.attemptsMade === "number"
+            ? result.attemptsMade
+            : pinAttempts + 1;
+        const remainingAttempts =
+          typeof result.remainingAttempts === "number"
+            ? result.remainingAttempts
+            : Math.max(0, MAX_PAYMENT_PIN_ATTEMPTS - attemptsMade);
+        setPinAttempts(attemptsMade);
+        if (result.locked || remainingAttempts <= 0) {
+          Alert.alert(
+            "Too Many Attempts",
+            "PIN entry is temporarily locked for this account. Please try again later."
+          );
+        } else {
+          Alert.alert("Wrong PIN", `${remainingAttempts} attempts remaining.`);
+        }
         setBalancePin("");
       }
     } catch {
@@ -112,6 +138,14 @@ export default function MyWalletScreen() {
           },
         },
       ]
+    );
+  };
+
+  const handleFreezeToggle = (account: AccountWithType) => {
+    if (account.type !== "card") return;
+    const frozen = !account.isFrozen;
+    setAccountFrozen({ accountId: account._id, frozen }).catch(() =>
+      Alert.alert("Error", "Could not update card status.")
     );
   };
 
@@ -249,7 +283,7 @@ export default function MyWalletScreen() {
               cards.map((account) => (
                 <View
                   key={account._id}
-                  className="bg-white rounded-2xl border border-ios-border overflow-hidden"
+                  className={`bg-white rounded-2xl border overflow-hidden ${account.isFrozen ? "border-orange-300 opacity-75" : "border-ios-border"}`}
                   style={styles.cardShadow}
                 >
                   <View className="flex-row items-center p-4">
@@ -259,20 +293,38 @@ export default function MyWalletScreen() {
                       resizeMode="contain"
                     />
                     <View className="flex-1">
-                      <Text className="text-ios-dark font-semibold">
-                        {account.bankName}
-                      </Text>
+                      <View className="flex-row items-center gap-2">
+                        <Text className="text-ios-dark font-semibold">
+                          {account.bankName}
+                        </Text>
+                        {account.isFrozen && (
+                          <View className="bg-orange-100 px-2 py-0.5 rounded-full">
+                            <Text className="text-orange-600 text-[10px] font-semibold">Frozen</Text>
+                          </View>
+                        )}
+                      </View>
                       <Text className="text-ios-grey4 text-sm mt-0.5">
                         {account.brand ? `${account.brand} ` : ""}....{account.accountLast4}
                       </Text>
                     </View>
-                    <TouchableOpacity
-                      onPress={() => handleUnlink(account)}
-                      className="px-3 py-1.5 rounded-lg bg-red-50 border border-red-200"
-                      activeOpacity={0.7}
-                    >
-                      <Text className="text-red-500 text-xs font-semibold">Unlink</Text>
-                    </TouchableOpacity>
+                    <View className="flex-row items-center gap-2">
+                      <TouchableOpacity
+                        onPress={() => handleFreezeToggle(account)}
+                        className={`px-3 py-1.5 rounded-lg border ${account.isFrozen ? "bg-green-50 border-green-200" : "bg-orange-50 border-orange-200"}`}
+                        activeOpacity={0.7}
+                      >
+                        <Text className={`text-xs font-semibold ${account.isFrozen ? "text-green-600" : "text-orange-600"}`}>
+                          {account.isFrozen ? "Unfreeze" : "Freeze"}
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => handleUnlink(account)}
+                        className="px-3 py-1.5 rounded-lg bg-red-50 border border-red-200"
+                        activeOpacity={0.7}
+                      >
+                        <Text className="text-red-500 text-xs font-semibold">Unlink</Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
                 </View>
               ))}

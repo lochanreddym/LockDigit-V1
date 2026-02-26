@@ -498,7 +498,7 @@ export default function AddNewCardScreen() {
                 {/* Resend */}
                 <View className="items-center">
                   <Text className="text-ios-grey4 text-sm">
-                    Didn't receive the code?
+                    Didn&apos;t receive the code?
                   </Text>
                   <TouchableOpacity
                     onPress={handleResend}

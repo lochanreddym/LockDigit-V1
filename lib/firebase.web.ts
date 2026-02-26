@@ -22,3 +22,10 @@ export async function signOutFirebase(): Promise<void> {
 export function getCurrentUser(): any {
   return null;
 }
+
+export function subscribeAuthState(
+  listener: (user: any) => void
+): () => void {
+  listener(null);
+  return () => {};
+}

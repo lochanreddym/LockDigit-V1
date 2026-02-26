@@ -18,10 +18,9 @@ const OTP_LENGTH = 6;
 
 export default function VerifyScreen() {
   const router = useRouter();
-  const { phone, name, isNewUser, simulatorTest, resetPin } = useLocalSearchParams<{
+  const { phone, name, simulatorTest, resetPin } = useLocalSearchParams<{
     phone: string;
     name: string;
-    isNewUser: string;
     simulatorTest?: string;
     resetPin?: string;
   }>();
@@ -98,7 +97,6 @@ export default function VerifyScreen() {
           params: {
             phone: phone || "",
             name: name || "",
-            isNewUser: isNewUser || "false",
             ...(resetPin === "true" && { resetPin: "true" }),
           },
         });
@@ -113,7 +111,6 @@ export default function VerifyScreen() {
           params: {
             phone: phone || "",
             name: name || "",
-            isNewUser: isNewUser || "false",
             firebaseUid: user.uid,
             ...(resetPin === "true" && { resetPin: "true" }),
           },
@@ -140,7 +137,7 @@ export default function VerifyScreen() {
       setOtp(new Array(OTP_LENGTH).fill(""));
       inputRefs.current[0]?.focus();
       Alert.alert("Code Sent", "A new verification code has been sent.");
-    } catch (error: any) {
+    } catch {
       Alert.alert("Error", "Failed to resend code. Please try again.");
     }
   };
@@ -230,7 +227,7 @@ export default function VerifyScreen() {
             {/* Resend */}
             <View className="items-center">
               <Text className="text-ios-grey4 text-sm">
-                Didn't receive the code?
+                Didn&apos;t receive the code?
               </Text>
               <TouchableOpacity
                 onPress={handleResend}

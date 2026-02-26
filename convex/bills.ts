@@ -1,12 +1,28 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import { assertResourceOwner, assertUserAccess, requireCurrentUser } from "./authHelpers";
+
+export const listMine = query({
+  args: {},
+  handler: async (ctx) => {
+    const { user } = await requireCurrentUser(ctx);
+    return await ctx.db
+      .query("bills")
+      .withIndex("by_user", (q) => q.eq("userId", user._id))
+      .order("desc")
+      .collect();
+  },
+});
 
 export const listByUser = query({
   args: { userId: v.id("users") },
   handler: async (ctx, args) => {
+    const { user } = await requireCurrentUser(ctx);
+    assertUserAccess(args.userId, user._id, "Forbidden bills read");
+
     return await ctx.db
       .query("bills")
-      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .withIndex("by_user", (q) => q.eq("userId", user._id))
       .order("desc")
       .collect();
   },
@@ -22,10 +38,13 @@ export const listByStatus = query({
     ),
   },
   handler: async (ctx, args) => {
+    const { user } = await requireCurrentUser(ctx);
+    assertUserAccess(args.userId, user._id, "Forbidden bills read");
+
     return await ctx.db
       .query("bills")
       .withIndex("by_user_status", (q) =>
-        q.eq("userId", args.userId).eq("status", args.status)
+        q.eq("userId", user._id).eq("status", args.status)
       )
       .order("desc")
       .collect();
@@ -35,13 +54,18 @@ export const listByStatus = query({
 export const getById = query({
   args: { billId: v.id("bills") },
   handler: async (ctx, args) => {
-    return await ctx.db.get(args.billId);
+    const { user } = await requireCurrentUser(ctx);
+    const bill = await ctx.db.get(args.billId);
+    if (!bill) return null;
+
+    assertResourceOwner(bill.userId, user._id, "Forbidden bill read");
+    return bill;
   },
 });
 
 export const create = mutation({
   args: {
-    userId: v.id("users"),
+    userId: v.optional(v.id("users")),
     title: v.string(),
     category: v.string(),
     amount: v.number(),
@@ -50,8 +74,12 @@ export const create = mutation({
     recurrenceInterval: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const { user } = await requireCurrentUser(ctx);
+    assertUserAccess(args.userId, user._id, "Forbidden bill creation");
+
     return await ctx.db.insert("bills", {
       ...args,
+      userId: user._id,
       status: "pending",
       createdAt: Date.now(),
     });
@@ -69,9 +97,15 @@ export const update = mutation({
     recurrenceInterval: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const { user } = await requireCurrentUser(ctx);
+    const bill = await ctx.db.get(args.billId);
+    if (!bill) throw new Error("Bill not found");
+
+    assertResourceOwner(bill.userId, user._id, "Forbidden bill update");
+
     const { billId, ...updates } = args;
     const filteredUpdates = Object.fromEntries(
-      Object.entries(updates).filter(([, v]) => v !== undefined)
+      Object.entries(updates).filter(([, value]) => value !== undefined)
     );
     await ctx.db.patch(billId, filteredUpdates);
   },
@@ -83,6 +117,12 @@ export const markPaid = mutation({
     stripePaymentIntentId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const { user } = await requireCurrentUser(ctx);
+    const bill = await ctx.db.get(args.billId);
+    if (!bill) throw new Error("Bill not found");
+
+    assertResourceOwner(bill.userId, user._id, "Forbidden bill status update");
+
     await ctx.db.patch(args.billId, {
       status: "paid",
       stripePaymentIntentId: args.stripePaymentIntentId,
@@ -94,6 +134,11 @@ export const markPaid = mutation({
 export const markOverdue = mutation({
   args: { billId: v.id("bills") },
   handler: async (ctx, args) => {
+    const { user } = await requireCurrentUser(ctx);
+    const bill = await ctx.db.get(args.billId);
+    if (!bill) throw new Error("Bill not found");
+
+    assertResourceOwner(bill.userId, user._id, "Forbidden bill status update");
     await ctx.db.patch(args.billId, { status: "overdue" });
   },
 });
@@ -101,20 +146,41 @@ export const markOverdue = mutation({
 export const remove = mutation({
   args: { billId: v.id("bills") },
   handler: async (ctx, args) => {
+    const { user } = await requireCurrentUser(ctx);
+    const bill = await ctx.db.get(args.billId);
+    if (!bill) return;
+
+    assertResourceOwner(bill.userId, user._id, "Forbidden bill delete");
     await ctx.db.delete(args.billId);
   },
 });
 
 export const search = query({
   args: {
-    userId: v.id("users"),
+    userId: v.optional(v.id("users")),
     searchQuery: v.string(),
   },
   handler: async (ctx, args) => {
+    const { user } = await requireCurrentUser(ctx);
+    assertUserAccess(args.userId, user._id, "Forbidden bill search");
+
     return await ctx.db
       .query("bills")
       .withSearchIndex("search_title", (q) =>
-        q.search("title", args.searchQuery).eq("userId", args.userId)
+        q.search("title", args.searchQuery).eq("userId", user._id)
+      )
+      .take(20);
+  },
+});
+
+export const searchMine = query({
+  args: { searchQuery: v.string() },
+  handler: async (ctx, args) => {
+    const { user } = await requireCurrentUser(ctx);
+    return await ctx.db
+      .query("bills")
+      .withSearchIndex("search_title", (q) =>
+        q.search("title", args.searchQuery).eq("userId", user._id)
       )
       .take(20);
   },
@@ -122,40 +188,102 @@ export const search = query({
 
 export const getUpcomingBills = query({
   args: {
-    userId: v.id("users"),
+    userId: v.optional(v.id("users")),
     daysAhead: v.number(),
   },
   handler: async (ctx, args) => {
-    const cutoff = Date.now() + args.daysAhead * 24 * 60 * 60 * 1000;
+    const { user } = await requireCurrentUser(ctx);
+    assertUserAccess(args.userId, user._id, "Forbidden bill read");
+
+    const now = Date.now();
+    const cutoff = now + args.daysAhead * 24 * 60 * 60 * 1000;
+
     const bills = await ctx.db
       .query("bills")
-      .withIndex("by_user_status", (q) =>
-        q.eq("userId", args.userId).eq("status", "pending")
-      )
+      .withIndex("by_due_date", (q) => q.lte("dueDate", cutoff))
       .collect();
 
-    return bills.filter((bill) => bill.dueDate <= cutoff);
+    return bills.filter(
+      (bill) =>
+        bill.userId === user._id &&
+        bill.status === "pending" &&
+        bill.dueDate >= now &&
+        bill.dueDate <= cutoff
+    );
+  },
+});
+
+export const getUpcomingMine = query({
+  args: { daysAhead: v.number() },
+  handler: async (ctx, args) => {
+    const { user } = await requireCurrentUser(ctx);
+    const now = Date.now();
+    const cutoff = now + args.daysAhead * 24 * 60 * 60 * 1000;
+
+    const bills = await ctx.db
+      .query("bills")
+      .withIndex("by_due_date", (q) => q.lte("dueDate", cutoff))
+      .collect();
+
+    return bills.filter(
+      (bill) =>
+        bill.userId === user._id &&
+        bill.status === "pending" &&
+        bill.dueDate >= now &&
+        bill.dueDate <= cutoff
+    );
   },
 });
 
 export const getTotalDue = query({
-  args: { userId: v.id("users") },
+  args: { userId: v.optional(v.id("users")) },
   handler: async (ctx, args) => {
+    const { user } = await requireCurrentUser(ctx);
+    assertUserAccess(args.userId, user._id, "Forbidden bill read");
+
     const pendingBills = await ctx.db
       .query("bills")
       .withIndex("by_user_status", (q) =>
-        q.eq("userId", args.userId).eq("status", "pending")
+        q.eq("userId", user._id).eq("status", "pending")
       )
       .collect();
 
     const overdueBills = await ctx.db
       .query("bills")
       .withIndex("by_user_status", (q) =>
-        q.eq("userId", args.userId).eq("status", "overdue")
+        q.eq("userId", user._id).eq("status", "overdue")
       )
       .collect();
 
-    const allUnpaid = [...pendingBills, ...overdueBills];
-    return allUnpaid.reduce((sum, bill) => sum + bill.amount, 0);
+    return [...pendingBills, ...overdueBills].reduce(
+      (sum, bill) => sum + bill.amount,
+      0
+    );
+  },
+});
+
+export const getTotalDueMine = query({
+  args: {},
+  handler: async (ctx) => {
+    const { user } = await requireCurrentUser(ctx);
+
+    const pendingBills = await ctx.db
+      .query("bills")
+      .withIndex("by_user_status", (q) =>
+        q.eq("userId", user._id).eq("status", "pending")
+      )
+      .collect();
+
+    const overdueBills = await ctx.db
+      .query("bills")
+      .withIndex("by_user_status", (q) =>
+        q.eq("userId", user._id).eq("status", "overdue")
+      )
+      .collect();
+
+    return [...pendingBills, ...overdueBills].reduce(
+      (sum, bill) => sum + bill.amount,
+      0
+    );
   },
 });

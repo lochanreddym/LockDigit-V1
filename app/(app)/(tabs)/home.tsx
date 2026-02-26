@@ -21,25 +21,26 @@ import { BlurView } from "expo-blur";
 import { SafeAreaView } from "react-native-safe-area-context";
 import QRCode from "react-native-qrcode-svg";
 import { BillCard } from "@/components/payments";
-import { useAuthStore } from "@/hooks/useAuth";
+import { useResolvedDocumentImages } from "@/hooks/useResolvedDocumentImages";
+import { useFirebaseSessionReady } from "@/hooks/useFirebaseSessionReady";
 import { Id } from "@/convex/_generated/dataModel";
 
 const ID_DOC_TYPES = ["national_id", "drivers_license", "passport"] as const;
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
 const CATEGORIES = [
-  { icon: "id-card-outline", label: "Government IDs", color: "#0A84FF" },
-  { icon: "school-outline", label: "Education", color: "#5E5CE6" },
-  { icon: "card-outline", label: "Banking", color: "#30D158" },
-  { icon: "medkit-outline", label: "Healthcare", color: "#FF3B30" },
-  { icon: "car-outline", label: "Driving", color: "#FF9500" },
-  { icon: "globe-outline", label: "Travel", color: "#0A84FF" },
-  { icon: "shield-outline", label: "Insurance", color: "#5E5CE6" },
-  { icon: "business-outline", label: "Employment", color: "#30D158" },
-  { icon: "home-outline", label: "Property", color: "#FF9500" },
-  { icon: "receipt-outline", label: "Tax & Finance", color: "#FF3B30" },
-  { icon: "trophy-outline", label: "Certificates", color: "#0A84FF" },
-  { icon: "document-outline", label: "Other", color: "#8E8E93" },
+  { id: "government_ids", icon: "id-card-outline", label: "Government IDs", color: "#0A84FF" },
+  { id: "education", icon: "school-outline", label: "Education", color: "#5E5CE6" },
+  { id: "banking_financial", icon: "card-outline", label: "Banking", color: "#30D158" },
+  { id: "health_wellness", icon: "medkit-outline", label: "Healthcare", color: "#FF3B30" },
+  { id: "transport_infrastructure", icon: "car-outline", label: "Transport", color: "#FF9500" },
+  { id: "identity_docs", icon: "document-text-outline", label: "Identity Docs", color: "#0A84FF" },
+  { id: "industry_private", icon: "business-outline", label: "Industry", color: "#30D158" },
+  { id: "skill_vocational", icon: "construct-outline", label: "Skills", color: "#FF3B30" },
+  { id: "ministry_defence", icon: "shield-outline", label: "Defence", color: "#5E5CE6" },
+  { id: "government_public", icon: "flag-outline", label: "Gov & Public", color: "#FF9500" },
+  { id: "sports_culture", icon: "trophy-outline", label: "Sports", color: "#FF9500" },
+  { id: "national_service", icon: "people-outline", label: "Service", color: "#5E5CE6" },
 ] as const;
 
 function maskId(idNumber: string): string {
@@ -50,31 +51,33 @@ function maskId(idNumber: string): string {
 
 export default function HomeScreen() {
   const router = useRouter();
-  const { userId, phone } = useAuthStore();
+  const firebaseSessionReady = useFirebaseSessionReady();
   const [qrZoomVisible, setQrZoomVisible] = useState(false);
 
-  const convexUserId = userId as Id<"users"> | null;
-
   const user = useQuery(
-    api.users.getById,
-    convexUserId ? { userId: convexUserId } : "skip"
+    api.users.getMe,
+    firebaseSessionReady ? {} : "skip"
   );
   const documents = useQuery(
-    api.documents.listByUser,
-    convexUserId ? { userId: convexUserId } : "skip"
+    api.documents.listMine,
+    firebaseSessionReady ? {} : "skip"
   );
-  // Skip identity request query until Convex has identityRequests.getByPhone deployed
-  const identityRequest = useQuery(
-    api.users.getById,
-    "skip"
-  ) as { fullName?: string; idNumber?: string } | undefined;
+  const identityRequest = undefined as
+    | { fullName?: string; idNumber?: string }
+    | undefined;
+  const mainDocumentId = (user as any)?.mainDocumentId as Id<"documents"> | undefined;
+  const mainDocument = useQuery(
+    api.documents.getById,
+    mainDocumentId ? { documentId: mainDocumentId } : "skip"
+  );
   const upcomingBills = useQuery(
-    api.bills.getUpcomingBills,
-    convexUserId ? { userId: convexUserId, daysAhead: 7 } : "skip"
+    api.bills.getUpcomingMine,
+    firebaseSessionReady ? { daysAhead: 7 } : "skip"
   );
 
   const verifiedCount = documents?.filter((d) => d.verified).length ?? 0;
   const isVerified = verifiedCount > 0;
+  const hasMainId = mainDocument?.verified === true;
 
   const fullName = identityRequest?.fullName ?? user?.name ?? "User";
   const dateOfBirth = (user as any)?.dateOfBirth ?? "—";
@@ -83,19 +86,73 @@ export default function HomeScreen() {
   const idLast4 = idNumber ? idNumber.slice(-4) : "";
   const idMasked = maskId(idNumber);
 
+  const fallbackIdDoc = useMemo(
+    () => documents?.find((d) => ID_DOC_TYPES.includes(d.type as any)),
+    [documents]
+  );
+  const avatarDocs = useMemo(
+    () => {
+      const docs: {
+        _id: string;
+        encrypted?: boolean;
+        frontImageUrl?: string | null;
+        frontMimeType?: string | null;
+      }[] = [];
+
+      if (mainDocument) {
+        docs.push({
+          _id: mainDocument._id,
+          encrypted: mainDocument.encrypted,
+          frontImageUrl: mainDocument.frontImageUrl,
+          frontMimeType: mainDocument.frontMimeType,
+        });
+      }
+      if (fallbackIdDoc && fallbackIdDoc._id !== mainDocument?._id) {
+        docs.push({
+          _id: fallbackIdDoc._id,
+          encrypted: fallbackIdDoc.encrypted,
+          frontImageUrl: fallbackIdDoc.frontImageUrl,
+          frontMimeType: fallbackIdDoc.frontMimeType,
+        });
+      }
+
+      return docs;
+    },
+    [mainDocument, fallbackIdDoc]
+  );
+  const { frontImageUris } = useResolvedDocumentImages(avatarDocs);
   const defaultIdImageUrl =
-    documents?.find((d) => ID_DOC_TYPES.includes(d.type as any))?.frontImageUrl ??
-    null;
+    hasMainId && mainDocument
+      ? frontImageUris[mainDocument._id] ?? mainDocument.frontImageUrl ?? null
+      : fallbackIdDoc
+        ? frontImageUris[fallbackIdDoc._id] ?? fallbackIdDoc.frontImageUrl ?? null
+        : null;
 
   const qrPayload = useMemo(() => {
-    const payload = JSON.stringify({
+    if (hasMainId) {
+      const doc = mainDocument ?? {
+        title: "",
+        type: "",
+        issuer: "",
+        documentNumber: "",
+      };
+      return JSON.stringify({
+        type: "verified_credential",
+        title: doc.title,
+        docType: doc.type,
+        issuer: doc.issuer || "",
+        documentNumber: doc.documentNumber || "",
+        verified: true,
+        holder: fullName,
+      });
+    }
+    return JSON.stringify({
       name: fullName,
       dateOfBirth: dateOfBirth === "—" ? "" : dateOfBirth,
       address: address === "—" ? "" : address,
       idLast4: idLast4 || "",
     });
-    return payload || "{}";
-  }, [fullName, dateOfBirth, address, idLast4]);
+  }, [fullName, dateOfBirth, address, idLast4, hasMainId, mainDocument]);
 
   const handleShare = async () => {
     const text = [
@@ -186,20 +243,36 @@ export default function HomeScreen() {
 
                   {/* Verification status */}
                   <View className="flex-1 mx-4">
-                    <View className="flex-row items-center">
-                      <View
-                        className="w-2.5 h-2.5 rounded-full mr-2"
-                        style={{
-                          backgroundColor: isVerified ? "#30D158" : "#FF3B30",
-                        }}
-                      />
-                      <Text className="text-white/90 text-sm font-medium">
-                        {isVerified ? "Verified" : "Not Yet Verified"}
-                      </Text>
-                    </View>
-                    <Text className="text-white/70 text-xs mt-1">
-                      {documents?.length ?? 0} documents | {verifiedCount} verified
-                    </Text>
+                    {hasMainId && mainDocument ? (
+                      <>
+                        <View className="flex-row items-center">
+                          <Ionicons name="shield-checkmark" size={14} color="#30D158" />
+                          <Text className="text-white/90 text-sm font-semibold ml-1.5">
+                            {mainDocument.title ?? "Main ID"}
+                          </Text>
+                        </View>
+                        <Text className="text-white/70 text-xs mt-1">
+                          Main ID · Verified
+                        </Text>
+                      </>
+                    ) : (
+                      <>
+                        <View className="flex-row items-center">
+                          <View
+                            className="w-2.5 h-2.5 rounded-full mr-2"
+                            style={{
+                              backgroundColor: isVerified ? "#30D158" : "#FF3B30",
+                            }}
+                          />
+                          <Text className="text-white/90 text-sm font-medium">
+                            {isVerified ? "Verified" : "Not Yet Verified"}
+                          </Text>
+                        </View>
+                        <Text className="text-white/70 text-xs mt-1">
+                          {documents?.length ?? 0} documents | {verifiedCount} verified
+                        </Text>
+                      </>
+                    )}
                   </View>
 
                   {/* QR code: tap to zoom (code + label below) */}
@@ -220,7 +293,9 @@ export default function HomeScreen() {
                         />
                       )}
                     </View>
-                    <Text className="text-white/90 text-xs mt-1.5">Tap to zoom</Text>
+                    <Text className="text-white/90 text-xs mt-1.5">
+                      {hasMainId ? "Verified" : "Tap to zoom"}
+                    </Text>
                   </TouchableOpacity>
                 </View>
 
@@ -301,7 +376,7 @@ export default function HomeScreen() {
                   icon: "shield-checkmark-outline" as const,
                   label: "Verified Credentials",
                   color: "#30D158",
-                  onPress: () => router.push("/(app)/(tabs)/wallet"),
+                  onPress: () => router.push("/(app)/verified-credentials"),
                 },
                 {
                   icon: "swap-horizontal-outline" as const,
@@ -347,17 +422,23 @@ export default function HomeScreen() {
               <Text className="text-ios-dark font-semibold text-lg">
                 Categories
               </Text>
-              <TouchableOpacity onPress={() => router.push("/(app)/categories")}>
+              <TouchableOpacity onPress={() => router.push("/(app)/document-categories")}>
                 <Text className="text-primary text-sm">See All</Text>
               </TouchableOpacity>
             </View>
             <View className="flex-row flex-wrap" style={{ gap: 12 }}>
               {CATEGORIES.slice(0, 8).map((cat) => (
                 <TouchableOpacity
-                  key={cat.label}
+                  key={cat.id}
                   className="items-center"
                   style={{ width: "22%" }}
                   activeOpacity={0.7}
+                  onPress={() =>
+                    router.push({
+                      pathname: "/(app)/document-categories/[category]",
+                      params: { category: cat.id },
+                    })
+                  }
                 >
                   <View
                     className="w-14 h-14 rounded-2xl items-center justify-center mb-1.5"

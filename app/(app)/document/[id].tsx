@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -15,6 +15,7 @@ import { useQuery, useMutation, useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { GlassButton } from "@/components/glass";
+import { useResolvedDocumentImages } from "@/hooks/useResolvedDocumentImages";
 import { formatDate, getDaysUntil } from "@/lib/utils";
 import { Id } from "@/convex/_generated/dataModel";
 
@@ -31,6 +32,30 @@ export default function DocumentDetailScreen() {
   const removeDocument = useMutation(api.documents.remove);
   const updateDocument = useMutation(api.documents.update);
   const extractDocumentData = useAction(api.ai.extractDocumentData);
+  const resolutionInput = useMemo(
+    () =>
+      document
+        ? [
+            {
+              _id: document._id,
+              encrypted: document.encrypted,
+              frontImageUrl: document.frontImageUrl,
+              backImageUrl: document.backImageUrl,
+              frontMimeType: document.frontMimeType,
+              backMimeType: document.backMimeType,
+            },
+          ]
+        : [],
+    [document]
+  );
+  const { frontImageUris, backImageUris } =
+    useResolvedDocumentImages(resolutionInput);
+  const frontDisplayUrl = document
+    ? frontImageUris[document._id] ?? document.frontImageUrl ?? null
+    : null;
+  const backDisplayUrl = document
+    ? backImageUris[document._id] ?? document.backImageUrl ?? null
+    : null;
 
   if (!document) {
     return (
@@ -74,22 +99,35 @@ export default function DocumentDetailScreen() {
 
   const handleExtract = async () => {
     if (!document.frontImageUrl) return;
+    if (document.encrypted) {
+      Alert.alert(
+        "Encrypted Document",
+        "AI extraction is only available for unencrypted documents."
+      );
+      return;
+    }
     setExtracting(true);
     try {
       const metadata = await extractDocumentData({
         imageUrl: document.frontImageUrl,
         documentType: document.type,
       });
+      const extractedDocumentNumber =
+        typeof metadata.documentNumber === "string"
+          ? metadata.documentNumber
+          : undefined;
+      const extractedIssuer =
+        typeof metadata.issuer === "string" ? metadata.issuer : undefined;
 
       await updateDocument({
         documentId,
         metadata,
-        documentNumber: metadata.documentNumber || document.documentNumber,
-        issuer: metadata.issuer || document.issuer,
+        documentNumber: extractedDocumentNumber || document.documentNumber,
+        issuer: extractedIssuer || document.issuer,
       });
 
       Alert.alert("Success", "Document data has been extracted and saved.");
-    } catch (error: any) {
+    } catch {
       Alert.alert(
         "Extraction Failed",
         "Could not extract data from this document."
@@ -123,20 +161,20 @@ export default function DocumentDetailScreen() {
           contentContainerStyle={{ paddingBottom: 100 }}
         >
           {/* Document Image */}
-          {document.frontImageUrl && (
+          {frontDisplayUrl && (
             <View className="mb-5">
               <View className="overflow-hidden rounded-3xl border border-ios-border" style={styles.cardShadow}>
                 <Image
                   source={{
                     uri: showFront
-                      ? document.frontImageUrl
-                      : document.backImageUrl || document.frontImageUrl,
+                      ? frontDisplayUrl
+                      : backDisplayUrl || frontDisplayUrl,
                   }}
                   style={{ width: width - 40, height: (width - 40) * 0.63 }}
                   resizeMode="cover"
                 />
               </View>
-              {document.backImageUrl && (
+              {backDisplayUrl && (
                 <View className="flex-row justify-center mt-3 gap-3">
                   <TouchableOpacity
                     onPress={() => setShowFront(true)}
@@ -220,6 +258,18 @@ export default function DocumentDetailScreen() {
               { label: "Document Number", value: document.documentNumber },
               { label: "Issuer", value: document.issuer },
               {
+                label: "Encryption",
+                value: document.encrypted ? "Client-side encrypted" : null,
+              },
+              {
+                label: "Blockchain",
+                value: document.encrypted
+                  ? document.blockchainTxHash
+                    ? `Anchored on chain ${document.blockchainChainId || "?"}`
+                    : "Anchor pending"
+                  : null,
+              },
+              {
                 label: "Expiry Date",
                 value: document.expiryDate
                   ? formatDate(document.expiryDate)
@@ -299,7 +349,7 @@ export default function DocumentDetailScreen() {
           )}
 
           {/* AI Extract Button */}
-          {!document.metadata && document.frontImageUrl && (
+          {!document.metadata && !document.encrypted && document.frontImageUrl && (
             <GlassButton
               title={extracting ? "Extracting..." : "Extract Data with AI"}
               onPress={handleExtract}

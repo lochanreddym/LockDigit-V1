@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   Alert,
   StyleSheet,
+  Appearance,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -13,36 +14,29 @@ import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
+import * as LocalAuthentication from "expo-local-authentication";
 import { useAuthStore } from "@/hooks/useAuth";
-import { Id } from "@/convex/_generated/dataModel";
+import { useFirebaseSessionReady } from "@/hooks/useFirebaseSessionReady";
 import * as SecureStoreHelper from "@/lib/secure-store";
 import { signOutFirebase } from "@/lib/firebase";
 import { maskString } from "@/lib/utils";
-let LocalAuthentication: any = null;
-try {
-  LocalAuthentication = require("expo-local-authentication");
-} catch {}
 
 export default function ProfileScreen() {
   const router = useRouter();
-  const { userId, logout: authLogout } = useAuthStore();
-  const convexUserId = userId as Id<"users"> | null;
-
+  const firebaseSessionReady = useFirebaseSessionReady();
+  const { logout: authLogout } = useAuthStore();
   const user = useQuery(
-    api.users.getById,
-    convexUserId ? { userId: convexUserId } : "skip"
+    api.users.getMe,
+    firebaseSessionReady ? {} : "skip"
   );
   const documents = useQuery(
-    api.documents.listByUser,
-    convexUserId ? { userId: convexUserId } : "skip"
-  );
-  const subscriptions = useQuery(
-    api.subscriptions.getActiveByUser,
-    convexUserId ? { userId: convexUserId } : "skip"
+    api.documents.listMine,
+    firebaseSessionReady ? {} : "skip"
   );
 
   const [biometricEnabled, setBiometricEnabled] = useState(false);
   const [biometricSupported, setBiometricSupported] = useState(false);
+  const [darkModePref, setDarkModePref] = useState<string>("system");
 
   useEffect(() => {
     (async () => {
@@ -53,8 +47,22 @@ export default function ProfileScreen() {
       }
       const enabled = await SecureStoreHelper.isFaceIdEnabled();
       setBiometricEnabled(enabled);
+      const prefFallback =
+        (await SecureStoreHelper.getDarkModePreference()) ?? "system";
+      setDarkModePref(prefFallback);
+      if (prefFallback !== "system") {
+        Appearance.setColorScheme(prefFallback as "light" | "dark" | null);
+      }
     })();
   }, []);
+
+  const cycleDarkMode = async () => {
+    const next =
+      darkModePref === "system" ? "dark" : darkModePref === "dark" ? "light" : "system";
+    setDarkModePref(next);
+    await SecureStoreHelper.setDarkModePreference(next);
+    Appearance.setColorScheme(next === "system" ? null : (next as "light" | "dark"));
+  };
 
   const toggleBiometric = async () => {
     if (!biometricSupported) {
@@ -109,8 +117,6 @@ export default function ProfileScreen() {
       ]
     );
   };
-
-  const verifiedCount = documents?.filter((d) => d.verified).length ?? 0;
 
   const menuSections = [
     {
@@ -172,6 +178,13 @@ export default function ProfileScreen() {
     {
       title: "Preferences",
       items: [
+        {
+          icon: "moon-outline" as const,
+          label: "Dark Mode",
+          color: "#5E5CE6",
+          value: darkModePref === "system" ? "System" : darkModePref === "dark" ? "On" : "Off",
+          onPress: cycleDarkMode,
+        },
         {
           icon: "notifications-outline" as const,
           label: "Notifications",

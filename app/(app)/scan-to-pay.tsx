@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -24,15 +24,14 @@ import { parseQRPaymentData, showPaymentError } from "@/lib/stripe";
 import { formatCurrency } from "@/lib/utils";
 import { useAuthStore } from "@/hooks/useAuth";
 import { Id } from "@/convex/_generated/dataModel";
-import { validatePin } from "@/lib/pin-manager";
 import { getPinLength, isFaceIdEnabled } from "@/lib/secure-store";
-let LocalAuthentication: any = null;
-try {
-  LocalAuthentication = require("expo-local-authentication");
-} catch {}
+import * as LocalAuthentication from "expo-local-authentication";
 
 const { width } = Dimensions.get("window");
 const SCAN_AREA_SIZE = width * 0.7;
+const MAX_APP_PIN_ATTEMPTS = 5;
+const createIdempotencyKey = (prefix: string) =>
+  `${prefix}:${Date.now()}:${Math.random().toString(36).slice(2, 12)}`;
 
 export default function ScanToPayScreen() {
   const router = useRouter();
@@ -49,6 +48,7 @@ export default function ScanToPayScreen() {
   const [paymentData, setPaymentData] = useState<ReturnType<
     typeof parseQRPaymentData
   > | null>(null);
+  const [idempotencyKey, setIdempotencyKey] = useState<string | null>(null);
   const [processing, setProcessing] = useState(false);
   const [showAmountEntry, setShowAmountEntry] = useState(false);
   const [sendAmountCents, setSendAmountCents] = useState("");
@@ -72,14 +72,15 @@ export default function ScanToPayScreen() {
   );
 
   const createPaymentIntent = useAction(api.payments.createPaymentIntent);
-  const verifyAndComplete = useMutation(api.payments.verifyAndCompletePayment);
+  const waitForTerminalStatus = useAction(api.payments.waitForTerminalStatus);
+  const verifyUserPin = useMutation(api.users.verifyPin);
 
   useEffect(() => {
     (async () => {
       const len = await getPinLength();
       setPinLength(len);
       const faceIdOn = await isFaceIdEnabled();
-      if (LocalAuthentication) {
+      if (LocalAuthentication.hasHardwareAsync) {
         const compatible = await LocalAuthentication.hasHardwareAsync();
         const enrolled = await LocalAuthentication.isEnrolledAsync();
         setFaceIdAvailable(faceIdOn && compatible && enrolled);
@@ -119,6 +120,7 @@ export default function ScanToPayScreen() {
         amount: amountCents,
         currency: "usd",
       });
+      setIdempotencyKey(createIdempotencyKey("scan_to_pay"));
       setShowManualEntry(false);
       setManualMerchantId("");
       setManualMerchantName("");
@@ -183,6 +185,7 @@ export default function ScanToPayScreen() {
 
     const data = parseQRPaymentData(result.data);
     if (data) {
+      setIdempotencyKey(createIdempotencyKey("scan_to_pay"));
       if (data.isReceiveMoneyQR) {
         setPaymentData(data);
         setShowAmountEntry(true);
@@ -222,36 +225,73 @@ export default function ScanToPayScreen() {
     }
   };
 
-  const handlePinSubmit = useCallback(async (enteredPin: string) => {
-    const valid = await validatePin(enteredPin);
-    if (valid) {
-      setShowPinModal(false);
+  const handlePinSubmit = async (enteredPin: string) => {
+    let verificationResult:
+      | {
+          success: boolean;
+          locked: boolean;
+          remainingAttempts: number;
+          attemptsMade: number;
+        }
+      | undefined;
+
+    try {
+      verificationResult = await verifyUserPin({ pin: enteredPin });
+    } catch {
+      setPinError("Verification failed. Please try again.");
       setPin("");
-      setPinError("");
-      setPinAttempts(0);
-      executePayment();
-    } else {
-      const newAttempts = pinAttempts + 1;
-      setPinAttempts(newAttempts);
+      return;
+    }
+
+    if (!verificationResult.success) {
+      const attemptsMade =
+        typeof verificationResult.attemptsMade === "number"
+          ? verificationResult.attemptsMade
+          : pinAttempts + 1;
+      const remainingAttempts =
+        typeof verificationResult.remainingAttempts === "number"
+          ? verificationResult.remainingAttempts
+          : Math.max(0, MAX_APP_PIN_ATTEMPTS - attemptsMade);
+      setPinAttempts(attemptsMade);
       Vibration.vibrate(300);
-      if (newAttempts >= 5) {
+
+      if (verificationResult.locked || remainingAttempts <= 0) {
         setShowPinModal(false);
         setPin("");
         setPinError("");
         Alert.alert(
           "Too Many Attempts",
-          "You've exceeded the maximum number of PIN attempts. Please try again later.",
-          [{ text: "OK", onPress: () => { setPaymentData(null); setScanned(false); } }]
+          "You've exceeded the maximum number of PIN attempts. Please verify with OTP.",
+          [{
+            text: "Verify with OTP",
+            onPress: () =>
+              router.replace({
+                pathname: "/(auth)/login",
+                params: { resetPin: "true" },
+              }),
+          }]
         );
       } else {
-        setPinError(`Incorrect PIN. ${5 - newAttempts} attempts remaining.`);
+        setPinError(`Incorrect PIN. ${remainingAttempts} attempts remaining.`);
         setPin("");
       }
+      return;
     }
-  }, [pinAttempts, paymentData]);
+
+    setShowPinModal(false);
+    setPin("");
+    setPinError("");
+    setPinAttempts(0);
+
+    try {
+      await executePayment();
+    } catch (error) {
+      showPaymentError(error);
+    }
+  };
 
   const handleFaceId = async () => {
-    if (!LocalAuthentication) return;
+    if (!LocalAuthentication.authenticateAsync) return;
     const result = await LocalAuthentication.authenticateAsync({
       promptMessage: "Verify your identity to confirm payment",
       fallbackLabel: "Use PIN",
@@ -266,6 +306,7 @@ export default function ScanToPayScreen() {
 
   const executePayment = async () => {
     if (!paymentData || !convexUserId) return;
+    const key = idempotencyKey ?? createIdempotencyKey("scan_to_pay");
 
     setProcessing(true);
     try {
@@ -273,14 +314,14 @@ export default function ScanToPayScreen() {
         params.billCategory && params.billSubCategory
           ? `Bill: ${params.billCategory} - ${params.billSubCategory}`
           : `Payment to ${paymentData.merchantName}`;
-      const { clientSecret, paymentIntentId, paymentToken } =
+      const { clientSecret, paymentIntentId } =
         await createPaymentIntent({
           amount: paymentData.amount,
           currency: paymentData.currency,
-          userId: convexUserId,
           description,
           merchantName: paymentData.merchantName,
           recipientPhone: paymentData.merchantId,
+          idempotencyKey: key,
         });
 
       const { error } = await confirmPayment(clientSecret, {
@@ -292,22 +333,38 @@ export default function ScanToPayScreen() {
         return;
       }
 
-      const result = await verifyAndComplete({
-        stripePaymentIntentId: paymentIntentId,
-        paymentToken,
-        paymentMethod: "Card",
+      const paymentResult = await waitForTerminalStatus({
+        paymentIntentId,
+        timeoutMs: 20_000,
+        pollIntervalMs: 1_000,
       });
 
-      if (result.verified && result.transactionId) {
+      if (paymentResult.status === "completed" && paymentResult.transactionId) {
+        setIdempotencyKey(null);
         router.replace({
           pathname: "/(app)/payment-success",
-          params: { transactionId: result.transactionId },
+          params: { transactionId: paymentResult.transactionId },
         });
+      } else if (paymentResult.status === "failed") {
+        Alert.alert(
+          "Payment Failed",
+          "The payment was not successful. Please try again with another method.",
+          [
+            {
+              text: "OK",
+              onPress: () => {
+                setPaymentData(null);
+                setScanned(false);
+                setIdempotencyKey(null);
+              },
+            },
+          ]
+        );
       } else {
         Alert.alert(
-          "Verification Failed",
-          "Payment was processed but verification failed. Please contact LockDigit support.",
-          [{ text: "OK", onPress: () => router.back() }]
+          "Payment Processing",
+          "Your payment is being finalized by our processor. We'll update it automatically.",
+          [{ text: "OK", onPress: () => router.replace("/(app)/(tabs)/payments") }]
         );
       }
     } catch (error) {
@@ -363,6 +420,7 @@ export default function ScanToPayScreen() {
                 setScanned(false);
                 setShowAmountEntry(false);
                 setSendAmountCents("");
+                setIdempotencyKey(null);
               }}
               className="mr-3 p-1"
             >
@@ -453,6 +511,7 @@ export default function ScanToPayScreen() {
               onPress={() => {
                 setPaymentData(null);
                 setScanned(false);
+                setIdempotencyKey(null);
               }}
               className="mr-3 p-1"
             >
@@ -506,6 +565,7 @@ export default function ScanToPayScreen() {
               onPress={() => {
                 setPaymentData(null);
                 setScanned(false);
+                setIdempotencyKey(null);
               }}
               variant="secondary"
               size="lg"

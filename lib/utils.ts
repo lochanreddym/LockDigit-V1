@@ -30,3 +30,35 @@ export function maskString(str: string, visibleChars = 4): string {
   const masked = "*".repeat(str.length - visibleChars);
   return masked + str.slice(-visibleChars);
 }
+
+export function applyOpacity(color: string, alpha: number): string {
+  const a = Math.max(0, Math.min(1, alpha));
+  const hex3 = /^#([0-9a-fA-F])([0-9a-fA-F])([0-9a-fA-F])$/;
+  const hex6 = /^#([0-9a-fA-F]{2})([0-9a-fA-F]{2})([0-9a-fA-F]{2})$/;
+  const rgb = /^rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)$/;
+  const rgba = /^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*[\d.]+)?\s*\)$/;
+
+  let r: number, g: number, b: number;
+  const c = color.trim();
+
+  if (hex3.test(c)) {
+    const m = c.match(hex3)!;
+    r = parseInt(m[1] + m[1], 16);
+    g = parseInt(m[2] + m[2], 16);
+    b = parseInt(m[3] + m[3], 16);
+  } else if (hex6.test(c)) {
+    const m = c.match(hex6)!;
+    r = parseInt(m[1], 16);
+    g = parseInt(m[2], 16);
+    b = parseInt(m[3], 16);
+  } else if (rgb.test(c) || rgba.test(c)) {
+    const m = c.match(/(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/)!;
+    r = parseInt(m[1], 10);
+    g = parseInt(m[2], 10);
+    b = parseInt(m[3], 10);
+  } else {
+    return `rgba(128,128,128,${a})`;
+  }
+
+  return `rgba(${r},${g},${b},${a})`;
+}

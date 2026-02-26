@@ -5,11 +5,13 @@ const KEYS = {
   PIN_SALT: "lockdigit_pin_salt",
   PIN_LENGTH: "lockdigit_pin_length",
   DEVICE_ID: "lockdigit_device_id",
+  DOCUMENT_ENCRYPTION_KEY: "lockdigit_document_encryption_key",
   AUTH_TOKEN: "lockdigit_auth_token",
   USER_ID: "lockdigit_user_id",
   PHONE: "lockdigit_phone",
   HAS_COMPLETED_SETUP: "lockdigit_setup_complete",
   FACE_ID_ENABLED: "lockdigit_face_id_enabled",
+  DARK_MODE: "lockdigit_dark_mode",
 } as const;
 
 export async function setItem(key: string, value: string): Promise<void> {
@@ -58,6 +60,17 @@ export async function getDeviceId(): Promise<string | null> {
   return await getItem(KEYS.DEVICE_ID);
 }
 
+// Document encryption key
+export async function storeDocumentEncryptionKey(
+  keyHex: string
+): Promise<void> {
+  await setItem(KEYS.DOCUMENT_ENCRYPTION_KEY, keyHex);
+}
+
+export async function getDocumentEncryptionKey(): Promise<string | null> {
+  return await getItem(KEYS.DOCUMENT_ENCRYPTION_KEY);
+}
+
 // Auth token
 export async function storeAuthToken(token: string): Promise<void> {
   await setItem(KEYS.AUTH_TOKEN, token);
@@ -103,6 +116,15 @@ export async function setFaceIdEnabled(enabled: boolean): Promise<void> {
 export async function isFaceIdEnabled(): Promise<boolean> {
   const value = await getItem(KEYS.FACE_ID_ENABLED);
   return value === "true";
+}
+
+// Dark mode preference: "light" | "dark" | "system"
+export async function getDarkModePreference(): Promise<string> {
+  return (await getItem(KEYS.DARK_MODE)) ?? "system";
+}
+
+export async function setDarkModePreference(value: string): Promise<void> {
+  await setItem(KEYS.DARK_MODE, value);
 }
 
 // Clear all

@@ -1,0 +1,5 @@
+[valid delivery] status=200 body="ok"
+[duplicate replay] status=200 body="ok"
+[invalid signature] status=400 body="Invalid signature"
+[delayed completion] status=200 body="ok"
+Failure-injection checks completed successfully.

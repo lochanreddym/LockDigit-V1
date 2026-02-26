@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
@@ -24,6 +24,7 @@ import { useAuthStore } from "@/hooks/useAuth";
 import { Id } from "@/convex/_generated/dataModel";
 
 type Step = "recipient" | "amount" | "source" | "confirm";
+const MAX_PAYMENT_PIN_ATTEMPTS = 5;
 
 export default function SendToAccountScreen() {
   const router = useRouter();
@@ -63,7 +64,7 @@ export default function SendToAccountScreen() {
   const [bankName, setBankName] = useState(
     preselectedRecipient?.bankName || ""
   );
-  const [isNewRecipient, setIsNewRecipient] = useState(!preselectedRecipient);
+  const isNewRecipient = !preselectedRecipient;
   const [recipientAccountLast4, setRecipientAccountLast4] = useState(
     preselectedRecipient?.accountLast4 || ""
   );
@@ -137,47 +138,50 @@ export default function SendToAccountScreen() {
     setShowPinModal(true);
   };
 
-  const handlePinSubmit = useCallback(
-    async (enteredPin: string) => {
-      if (!sourceAccountId) return;
-      try {
-        const valid = await verifyPin({
-          accountId: sourceAccountId,
-          pin: enteredPin,
-        });
-        if (valid) {
+  const handlePinSubmit = async (enteredPin: string) => {
+    if (!sourceAccountId) return;
+    try {
+      const result = await verifyPin({
+        accountId: sourceAccountId,
+        pin: enteredPin,
+      });
+      if (result.success) {
+        setShowPinModal(false);
+        setPin("");
+        setPinError("");
+        setPinAttempts(0);
+        await executeTransfer();
+      } else {
+        const attemptsMade =
+          typeof result.attemptsMade === "number"
+            ? result.attemptsMade
+            : pinAttempts + 1;
+        const remainingAttempts =
+          typeof result.remainingAttempts === "number"
+            ? result.remainingAttempts
+            : Math.max(0, MAX_PAYMENT_PIN_ATTEMPTS - attemptsMade);
+
+        setPinAttempts(attemptsMade);
+        Vibration.vibrate(300);
+        if (result.locked || remainingAttempts <= 0) {
           setShowPinModal(false);
           setPin("");
           setPinError("");
-          setPinAttempts(0);
-          executeTransfer();
+          Alert.alert(
+            "Too Many Attempts",
+            "You've exceeded the maximum number of PIN attempts.",
+            [{ text: "OK", onPress: () => router.back() }]
+          );
         } else {
-          const newAttempts = pinAttempts + 1;
-          setPinAttempts(newAttempts);
-          Vibration.vibrate(300);
-          if (newAttempts >= 5) {
-            setShowPinModal(false);
-            setPin("");
-            setPinError("");
-            Alert.alert(
-              "Too Many Attempts",
-              "You've exceeded the maximum number of PIN attempts.",
-              [{ text: "OK", onPress: () => router.back() }]
-            );
-          } else {
-            setPinError(
-              `Incorrect PIN. ${5 - newAttempts} attempts remaining.`
-            );
-            setPin("");
-          }
+          setPinError(`Incorrect PIN. ${remainingAttempts} attempts remaining.`);
+          setPin("");
         }
-      } catch {
-        setPinError("Verification failed. Please try again.");
-        setPin("");
       }
-    },
-    [pinAttempts, sourceAccountId]
-  );
+    } catch {
+      setPinError("Verification failed. Please try again.");
+      setPin("");
+    }
+  };
 
   const executeTransfer = async () => {
     if (!convexUserId || !sourceAccount) return;

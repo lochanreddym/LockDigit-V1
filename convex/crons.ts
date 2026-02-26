@@ -24,4 +24,25 @@ crons.daily(
   internal.cronHelpers.sendBillReminders
 );
 
+// Reconcile pending Stripe transactions against processor state.
+crons.interval(
+  "reconcile stripe transactions",
+  { minutes: 60 },
+  internal.payments.reconcileStripeTransactionsInternal
+);
+
+// Drain blockchain anchor queue in small regular batches.
+crons.interval(
+  "process blockchain anchor queue",
+  { minutes: 5 },
+  internal.blockchain.processPendingAnchorJobs
+);
+
+// Evaluate operational health thresholds and emit immutable ops alerts.
+crons.interval(
+  "evaluate operational alerts",
+  { minutes: 5 },
+  internal.ops.evaluateAlertsInternal
+);
+
 export default crons;

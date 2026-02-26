@@ -58,3 +58,12 @@ export async function signOutFirebase(): Promise<void> {
 export function getCurrentUser(): FirebaseAuthTypes.User | null {
   return auth().currentUser;
 }
+
+/**
+ * Subscribe to Firebase auth user changes.
+ */
+export function subscribeAuthState(
+  listener: (user: FirebaseAuthTypes.User | null) => void
+): () => void {
+  return auth().onAuthStateChanged(listener);
+}

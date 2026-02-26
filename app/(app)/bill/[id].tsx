@@ -18,6 +18,9 @@ import { formatCurrency, formatDate, getDaysUntil } from "@/lib/utils";
 import { useAuthStore } from "@/hooks/useAuth";
 import { Id } from "@/convex/_generated/dataModel";
 
+const createIdempotencyKey = (prefix: string) =>
+  `${prefix}:${Date.now()}:${Math.random().toString(36).slice(2, 12)}`;
+
 export default function BillDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
@@ -32,6 +35,7 @@ export default function BillDetailScreen() {
   const markPaid = useMutation(api.bills.markPaid);
   const removeBill = useMutation(api.bills.remove);
   const createPaymentIntent = useAction(api.payments.createPaymentIntent);
+  const waitForTerminalStatus = useAction(api.payments.waitForTerminalStatus);
 
   if (!bill) {
     return (
@@ -61,8 +65,9 @@ export default function BillDetailScreen() {
       const { clientSecret, paymentIntentId } = await createPaymentIntent({
         amount: bill.amount,
         currency: "usd",
-        userId: convexUserId,
         description: `Bill payment: ${bill.title}`,
+        merchantName: bill.title,
+        idempotencyKey: createIdempotencyKey("bill_payment"),
       });
 
       const { error } = await confirmPayment(clientSecret, {
@@ -72,6 +77,25 @@ export default function BillDetailScreen() {
       if (error) {
         Alert.alert("Payment Failed", error.message);
       } else {
+        const paymentResult = await waitForTerminalStatus({
+          paymentIntentId,
+          timeoutMs: 20_000,
+          pollIntervalMs: 1_000,
+        });
+
+        if (paymentResult.status === "failed") {
+          Alert.alert("Payment Failed", "The bill payment did not complete.");
+          return;
+        }
+
+        if (paymentResult.status !== "completed") {
+          Alert.alert(
+            "Payment Pending",
+            "Payment confirmation is still processing. Your bill status will update automatically."
+          );
+          return;
+        }
+
         await markPaid({
           billId,
           stripePaymentIntentId: paymentIntentId,

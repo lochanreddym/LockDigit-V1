@@ -46,6 +46,13 @@ module.exports = {
           border: "#E5E5EA",
           borderLight: "#D2D2D7",
         },
+        dark: {
+          bg: "#000000",
+          bgAlt: "#1C1C1E",
+          card: "#1C1C1E",
+          border: "#38383A",
+          borderLight: "#48484A",
+        },
         success: "#30D158",
         warning: "#FF9500",
         danger: "#FF3B30",

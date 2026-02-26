@@ -137,11 +137,29 @@ constants/              # Theme colors, app config
 
 ## Roadmap
 
-- [ ] Biometric authentication (Face ID / fingerprint)
-- [ ] Transaction history with filters and export
+- [x] Biometric authentication (Face ID / fingerprint)
+- [x] Transaction history with filters and export
 - [ ] Multi-currency support
-- [ ] Peer-to-peer payments
+- [x] Peer-to-peer payments (send-to-mobile, money transfer)
 - [ ] Budget tracking and spending analytics
-- [ ] Dark mode
+- [x] Dark mode
 - [ ] Push notifications via FCM
-- [ ] Card freeze / temporary lock
+- [x] Card freeze / temporary lock
+
+## Beta Operations And CI
+
+- Operational runbooks and guardrails are in `docs/beta/`.
+- CI pipeline is in `.github/workflows/ci.yml`.
+
+Local commands:
+
+```bash
+npm run typecheck
+npm run lint
+npm run test
+npm run security:secrets
+npm run security:deps
+npm run resilience:inject:webhooks -- --dry-run
+npm run beta:evidence -- --skip-checks
+npx convex run ops:getAlertSnapshot
+```

@@ -9,7 +9,7 @@ import {
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { CATEGORIES } from "./constants";
+import { CATEGORIES } from "@/constants/billCategories";
 
 export default function CategoriesScreen() {
   const router = useRouter();

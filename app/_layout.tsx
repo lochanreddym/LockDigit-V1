@@ -1,9 +1,12 @@
 import "../global.css";
 import "@/lib/nativewind-interop"; // Register third-party components with NativeWind (must be early)
 import React, { useEffect } from "react";
+import { useColorScheme, Appearance } from "react-native";
 import { Stack } from "expo-router";
+import * as SecureStoreHelper from "@/lib/secure-store";
 import { ConvexProvider, ConvexReactClient } from "convex/react";
 import { StripeProvider } from "@/lib/stripe-native";
+import { getFirebaseToken } from "@/lib/firebase";
 import { StatusBar } from "expo-status-bar";
 import * as SplashScreen from "expo-splash-screen";
 import { useAppStateLock } from "@/hooks/useAppState";
@@ -16,8 +19,19 @@ const convex = new ConvexReactClient(
 );
 
 function AppContent() {
+  const colorScheme = useColorScheme();
+
   // Monitor app state for auto-lock
   useAppStateLock();
+
+  useEffect(() => {
+    (async () => {
+      const pref = await SecureStoreHelper.getDarkModePreference();
+      if (pref !== "system") {
+        Appearance.setColorScheme(pref as "light" | "dark" | null);
+      }
+    })();
+  }, []);
 
   useEffect(() => {
     // Hide splash screen after a brief delay
@@ -29,11 +43,13 @@ function AppContent() {
 
   return (
     <>
-      <StatusBar style="dark" />
+      <StatusBar style={colorScheme === "dark" ? "light" : "dark"} />
       <Stack
         screenOptions={{
           headerShown: false,
-          contentStyle: { backgroundColor: "#F2F2F7" },
+          contentStyle: {
+            backgroundColor: colorScheme === "dark" ? "#000000" : "#F2F2F7",
+          },
           animation: "slide_from_right",
         }}
       >
@@ -53,6 +69,16 @@ function AppContent() {
 }
 
 export default function RootLayout() {
+  useEffect(() => {
+    convex.setAuth(async () => {
+      return await getFirebaseToken();
+    });
+
+    return () => {
+      convex.clearAuth();
+    };
+  }, []);
+
   return (
     <ConvexProvider client={convex}>
       <StripeProvider

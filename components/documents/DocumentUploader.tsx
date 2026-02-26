@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React from "react";
 import { View, Text, TouchableOpacity, Image, Alert } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
@@ -17,10 +17,7 @@ export function DocumentUploader({
   onImageSelected,
   onRemove,
 }: DocumentUploaderProps) {
-  const [loading, setLoading] = useState(false);
-
   const pickImage = async (useCamera: boolean) => {
-    setLoading(true);
     try {
       const options: ImagePicker.ImagePickerOptions = {
         mediaTypes: ["images"],
@@ -36,10 +33,8 @@ export function DocumentUploader({
       if (!result.canceled && result.assets[0]) {
         onImageSelected(result.assets[0].uri);
       }
-    } catch (error) {
+    } catch {
       Alert.alert("Error", "Failed to pick image. Please try again.");
-    } finally {
-      setLoading(false);
     }
   };
 

@@ -7,12 +7,12 @@ import {
   StyleSheet,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useQuery, useMutation } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { EmptyState } from "@/components/common";
 import { formatDate } from "@/lib/utils";
-import { useAuthStore } from "@/hooks/useAuth";
+import { useFirebaseSessionReady } from "@/hooks/useFirebaseSessionReady";
 import { Id } from "@/convex/_generated/dataModel";
 
 const notificationIcons: Record<string, keyof typeof Ionicons.glyphMap> = {
@@ -32,12 +32,10 @@ const notificationColors: Record<string, string> = {
 };
 
 export default function NotificationsScreen() {
-  const { userId } = useAuthStore();
-  const convexUserId = userId as Id<"users"> | null;
-
+  const firebaseSessionReady = useFirebaseSessionReady();
   const notifications = useQuery(
-    api.notifications.listByUser,
-    convexUserId ? { userId: convexUserId } : "skip"
+    api.notifications.listMine,
+    firebaseSessionReady ? {} : "skip"
   );
   const markAsRead = useMutation(api.notifications.markAsRead);
   const markAllAsRead = useMutation(api.notifications.markAllAsRead);
@@ -45,8 +43,7 @@ export default function NotificationsScreen() {
   const unreadCount = notifications?.filter((n) => !n.read).length ?? 0;
 
   const handleMarkAllRead = async () => {
-    if (!convexUserId) return;
-    await markAllAsRead({ userId: convexUserId });
+    await markAllAsRead({});
   };
 
   const handleNotificationPress = async (notificationId: Id<"notifications">) => {

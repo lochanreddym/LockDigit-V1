@@ -10,21 +10,46 @@ import {
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { validatePin } from "@/lib/pin-manager";
+import { useMutation, useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
 import { useAuthStore } from "@/hooks/useAuth";
 import * as SecureStoreHelper from "@/lib/secure-store";
+import { useFirebaseSessionReady } from "@/hooks/useFirebaseSessionReady";
+
+const MAX_APP_PIN_ATTEMPTS = 5;
 
 export default function PinLockScreen() {
   const router = useRouter();
-  const [pinLength, setPinLength] = useState(6);
   const [pin, setPin] = useState("");
   const [attempts, setAttempts] = useState(0);
+  const [pinError, setPinError] = useState("");
   const shakeAnim = useRef(new Animated.Value(0)).current;
   const { setPinVerified } = useAuthStore();
+  const firebaseSessionReady = useFirebaseSessionReady();
+  const user = useQuery(api.users.getMeForPin, firebaseSessionReady ? {} : "skip");
+  const verifyPin = useMutation(api.users.verifyPin);
+  const pinLength = user?.pinLength ?? 6;
 
   useEffect(() => {
-    SecureStoreHelper.getPinLength().then(setPinLength);
-  }, []);
+    if (user?.pinLockedUntil && user.pinLockedUntil > Date.now()) {
+      Alert.alert(
+        "PIN Locked",
+        "Too many failed attempts. Please verify your identity with OTP.",
+        [
+          {
+            text: "Verify Identity",
+            onPress: async () => {
+              await SecureStoreHelper.clearAll();
+              router.replace({
+                pathname: "/(auth)/login",
+                params: { resetPin: "true" },
+              });
+            },
+          },
+        ]
+      );
+    }
+  }, [user?.pinLockedUntil, router]);
 
   const shake = () => {
     Animated.sequence([
@@ -57,21 +82,34 @@ export default function PinLockScreen() {
   };
 
   const handleDigitPress = async (digit: string) => {
+    setPinError("");
+    if (!user || !user.hasPin) return;
     if (pin.length >= pinLength) return;
     const newPin = pin + digit;
     setPin(newPin);
 
     if (newPin.length === pinLength) {
-      const isValid = await validatePin(newPin);
-      if (isValid) {
-        setPinVerified(true);
-        router.replace("/(app)/(tabs)/home");
-      } else {
+      try {
+        const result = await verifyPin({ pin: newPin });
+        if (result.success) {
+          setPinVerified(true);
+          router.replace("/(app)/(tabs)/home");
+          return;
+        }
+
         shake();
-        setAttempts((prev) => prev + 1);
+        const attemptsMade =
+          typeof result.attemptsMade === "number"
+            ? result.attemptsMade
+            : attempts + 1;
+        const remainingAttempts =
+          typeof result.remainingAttempts === "number"
+            ? result.remainingAttempts
+            : Math.max(0, MAX_APP_PIN_ATTEMPTS - attemptsMade);
+        setAttempts(attemptsMade);
         setTimeout(() => setPin(""), 300);
 
-        if (attempts >= 4) {
+        if (result.locked || remainingAttempts <= 0) {
           Alert.alert(
             "Too Many Attempts",
             "For security, please verify your identity again.",
@@ -80,19 +118,52 @@ export default function PinLockScreen() {
                 text: "Verify Identity",
                 onPress: async () => {
                   await SecureStoreHelper.clearAll();
-                  router.replace("/(auth)/login");
+                  router.replace({
+                    pathname: "/(auth)/login",
+                    params: { resetPin: "true" },
+                  });
                 },
               },
             ]
           );
         }
+      } catch (err) {
+        console.error("PIN verification request failed", err);
+        setPinError("Verification service unavailable. Please try again.");
+        shake();
+        setTimeout(() => setPin(""), 300);
       }
     }
   };
 
   const handleBackspace = () => {
+    setPinError("");
     setPin(pin.slice(0, -1));
   };
+
+  if (!firebaseSessionReady || user === undefined) {
+    return (
+      <View className="flex-1 bg-ios-bg items-center justify-center">
+        <Text className="text-ios-grey4">Loading secure session...</Text>
+      </View>
+    );
+  }
+
+  if (!user || !user.hasPin) {
+    return (
+      <View className="flex-1 bg-ios-bg items-center justify-center px-6">
+        <Text className="text-ios-grey4 text-center">
+          Session expired. Please verify with OTP again.
+        </Text>
+        <TouchableOpacity
+          onPress={() => router.replace("/(auth)/login")}
+          className="mt-4"
+        >
+          <Text className="text-primary text-sm font-medium">Go to Login</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   return (
     <View className="flex-1 bg-ios-bg">
@@ -107,6 +178,11 @@ export default function PinLockScreen() {
             <Text className="text-ios-grey4 text-sm mt-2">
               Enter your PIN to unlock LockDigit
             </Text>
+            {pinError ? (
+              <Text className="text-red-500 text-sm mt-2 text-center">
+                {pinError}
+              </Text>
+            ) : null}
           </View>
 
           {/* PIN dots */}

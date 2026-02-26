@@ -11,21 +11,26 @@ import {
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useQuery } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import { hashPin } from "@/lib/pin-manager";
 import { useAuthStore } from "@/hooks/useAuth";
+import { useFirebaseSessionReady } from "@/hooks/useFirebaseSessionReady";
 import * as SecureStoreHelper from "@/lib/secure-store";
+import { getFirebaseToken } from "@/lib/firebase";
+
+const MAX_PIN_ATTEMPTS = 5;
 
 export default function VerifyPinScreen() {
   const router = useRouter();
   const { phone } = useLocalSearchParams<{ phone: string }>();
+  const firebaseSessionReady = useFirebaseSessionReady();
   const { setAuthenticated, setPinCreated } = useAuthStore();
 
   const user = useQuery(
-    api.users.getByPhone,
-    phone ? { phone } : "skip"
+    api.users.getMeForPin,
+    firebaseSessionReady ? {} : "skip"
   );
+  const verifyPin = useMutation(api.users.verifyPin);
 
   const [pin, setPin] = useState("");
   const [attempts, setAttempts] = useState(0);
@@ -35,14 +40,23 @@ export default function VerifyPinScreen() {
   const pinLength = user?.pinLength ?? 4;
 
   useEffect(() => {
-    if (user === null) {
+    if (user?.pinLockedUntil && user.pinLockedUntil > Date.now()) {
       Alert.alert(
-        "Not Registered",
-        "This number is not registered. Please sign up.",
-        [{ text: "OK", onPress: () => router.back() }]
+        "PIN Locked",
+        "Too many failed attempts. Please verify with OTP to continue.",
+        [
+          {
+            text: "Verify with OTP",
+            onPress: () =>
+              router.replace({
+                pathname: "/(auth)/login",
+                params: { resetPin: "true" },
+              }),
+          },
+        ]
       );
     }
-  }, [user]);
+  }, [user?.pinLockedUntil, router]);
 
   const shake = () => {
     Animated.sequence([
@@ -54,8 +68,17 @@ export default function VerifyPinScreen() {
     ]).start();
   };
 
+  const waitForFirebaseToken = async () => {
+    for (let i = 0; i < 10; i += 1) {
+      const token = await getFirebaseToken();
+      if (token) return token;
+      await new Promise((resolve) => setTimeout(resolve, 150));
+    }
+    return null;
+  };
+
   const handleDigitPress = async (digit: string) => {
-    if (!user || verifying) return;
+    if (!user || verifying || !user.hasPin) return;
     if (pin.length >= pinLength) return;
 
     const newPin = pin + digit;
@@ -64,22 +87,56 @@ export default function VerifyPinScreen() {
     if (newPin.length === pinLength) {
       setVerifying(true);
       try {
-        const hash = await hashPin(newPin, user.pinSalt!);
-        if (hash === user.pinHash) {
-          await SecureStoreHelper.storePinHash(user.pinHash!, user.pinSalt!);
+        const result = await verifyPin({ pin: newPin });
+        if (result.success) {
+          const firebaseToken = await waitForFirebaseToken();
+          if (!firebaseToken) {
+            Alert.alert(
+              "Session Error",
+              "Could not establish an authenticated session. Please verify with OTP again.",
+              [{ text: "Go to Login", onPress: () => router.replace("/(auth)/login") }]
+            );
+            setPin("");
+            return;
+          }
+
           await SecureStoreHelper.storeUserId(user._id);
-          await SecureStoreHelper.storePhone(phone!);
+          if (user.phone) {
+            await SecureStoreHelper.storePhone(user.phone);
+          } else if (typeof phone === "string" && phone.length > 0) {
+            await SecureStoreHelper.storePhone(phone);
+          }
           await SecureStoreHelper.storePinLength(String(pinLength));
           await SecureStoreHelper.setSetupComplete();
-          setAuthenticated(user._id, phone!);
+          setAuthenticated(user._id, user.phone || phone || "");
           setPinCreated();
           router.replace("/(app)/(tabs)/home");
         } else {
           shake();
-          setAttempts((prev) => prev + 1);
+          const attemptsFromServer =
+            typeof result.attemptsMade === "number"
+              ? result.attemptsMade
+              : typeof result.maxAttempts === "number" &&
+                  typeof result.remainingAttempts === "number"
+                ? Math.max(0, result.maxAttempts - result.remainingAttempts)
+                : undefined;
+          const newAttempts = attemptsFromServer ?? attempts + 1;
+          setAttempts(newAttempts);
           setTimeout(() => setPin(""), 300);
 
-          if (attempts >= 4) {
+          if (result.locked) {
+            Alert.alert(
+              "Too Many Attempts",
+              "Please verify your identity with OTP.",
+              [{
+                text: "Verify with OTP",
+                onPress: () => router.replace({
+                  pathname: "/(auth)/login",
+                  params: { resetPin: "true" },
+                }),
+              }]
+            );
+          } else if (newAttempts >= MAX_PIN_ATTEMPTS) {
             Alert.alert(
               "Too Many Attempts",
               "Please verify your identity with OTP.",
@@ -106,11 +163,43 @@ export default function VerifyPinScreen() {
     if (!verifying) setPin(pin.slice(0, -1));
   };
 
+  if (!firebaseSessionReady) {
+    return (
+      <View className="flex-1 bg-ios-bg items-center justify-center px-6">
+        <Text className="text-ios-grey4 text-center">
+          No authenticated session found. Verify with OTP to continue.
+        </Text>
+        <TouchableOpacity
+          onPress={() => router.replace("/(auth)/login")}
+          className="mt-4"
+        >
+          <Text className="text-primary text-sm font-medium">Go to Login</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
   if (user === undefined) {
     return (
       <View className="flex-1 bg-ios-bg items-center justify-center">
         <ActivityIndicator size="large" color="#0A84FF" />
         <Text className="text-ios-grey4 mt-4">Loading account...</Text>
+      </View>
+    );
+  }
+
+  if (!user) {
+    return (
+      <View className="flex-1 bg-ios-bg items-center justify-center px-6">
+        <Text className="text-ios-grey4 text-center">
+          No authenticated session found. Verify with OTP to continue.
+        </Text>
+        <TouchableOpacity
+          onPress={() => router.replace("/(auth)/login")}
+          className="mt-4"
+        >
+          <Text className="text-primary text-sm font-medium">Go to Login</Text>
+        </TouchableOpacity>
       </View>
     );
   }

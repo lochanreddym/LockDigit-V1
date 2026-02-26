@@ -9,7 +9,7 @@ import {
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { getCategoryById } from "./constants";
+import { getCategoryById } from "@/constants/billCategories";
 
 export default function SubCategoryScreen() {
   const router = useRouter();

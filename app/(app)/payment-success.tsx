@@ -12,14 +12,11 @@ import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
+import * as Clipboard from "expo-clipboard";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { formatCurrency } from "@/lib/utils";
 import { Id } from "@/convex/_generated/dataModel";
-let Clipboard: any = null;
-try {
-  Clipboard = require("expo-clipboard");
-} catch {}
 
 function formatReceiptDate(timestamp: number): string {
   const d = new Date(timestamp);
@@ -47,9 +44,7 @@ export default function PaymentSuccessScreen() {
   );
 
   const copyToClipboard = async (text: string, field: string) => {
-    if (Clipboard) {
-      await Clipboard.setStringAsync(text);
-    }
+    await Clipboard.setStringAsync(text);
     setCopiedField(field);
     setTimeout(() => setCopiedField(null), 2000);
   };
@@ -229,9 +224,10 @@ export default function PaymentSuccessScreen() {
                         {transaction.paymentToken}
                       </Text>
                       <TouchableOpacity
+                        disabled={!transaction.paymentToken}
                         onPress={() =>
                           copyToClipboard(
-                            transaction.paymentToken,
+                            transaction.paymentToken ?? "",
                             "transactionId"
                           )
                         }

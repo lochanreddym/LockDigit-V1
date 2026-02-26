@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useCallback, useEffect } from "react";
 import { View, Text, ActivityIndicator, Image, StyleSheet } from "react-native";
 import { useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
@@ -13,17 +13,12 @@ export default function Index() {
   const router = useRouter();
   const { setAuthenticated, setPinCreated, setLoading } = useAuthStore();
 
-  useEffect(() => {
-    checkAuthState();
-  }, []);
-
-  const checkAuthState = async () => {
+  const checkAuthState = useCallback(async () => {
     try {
       const hasSetup = await SecureStoreHelper.hasCompletedSetup();
       const userId = await SecureStoreHelper.getUserId();
-      const pinData = await SecureStoreHelper.getPinHash();
 
-      if (hasSetup && userId && pinData.hash) {
+      if (hasSetup && userId) {
         setAuthenticated(userId, "");
         setPinCreated();
         setLoading(false);
@@ -37,7 +32,11 @@ export default function Index() {
       setLoading(false);
       router.replace("/(auth)/login");
     }
-  };
+  }, [router, setAuthenticated, setLoading, setPinCreated]);
+
+  useEffect(() => {
+    void checkAuthState();
+  }, [checkAuthState]);
 
   return (
     <View className="flex-1">

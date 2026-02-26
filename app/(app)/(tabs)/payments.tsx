@@ -7,27 +7,35 @@ import {
   Alert,
   Modal,
   StyleSheet,
+  Share,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { useQuery, useMutation } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { GlassButton, GlassInput } from "@/components/glass";
 import { BillCard, TransactionItem } from "@/components/payments";
 import { EmptyState } from "@/components/common";
 import { formatCurrency } from "@/lib/utils";
-import { useAuthStore } from "@/hooks/useAuth";
-import { Id } from "@/convex/_generated/dataModel";
+import { useFirebaseSessionReady } from "@/hooks/useFirebaseSessionReady";
 import { Config } from "@/constants/Config";
 import { LinearGradient } from "expo-linear-gradient";
 
-type FilterType = "all" | "completed" | "pending";
+type FilterType = "all" | "completed" | "pending" | "failed";
+
+function escapeCsvCell(value: string | number | undefined | null): string {
+  const str = value === undefined || value === null ? "" : String(value);
+  const normalized = str.replace(/\r?\n/g, " ").trim();
+  const needsPrefix = /^[=+\-@|]/.test(normalized);
+  const prefixed = needsPrefix ? `'${normalized}` : normalized;
+  const escaped = prefixed.replace(/"/g, '""');
+  return `"${escaped}"`;
+}
 
 export default function PaymentsScreen() {
   const router = useRouter();
-  const { userId } = useAuthStore();
-  const convexUserId = userId as Id<"users"> | null;
+  const firebaseSessionReady = useFirebaseSessionReady();
 
   const [activeFilter, setActiveFilter] = useState<FilterType>("all");
   const [showAddBill, setShowAddBill] = useState(false);
@@ -39,22 +47,22 @@ export default function PaymentsScreen() {
   const [creating, setCreating] = useState(false);
 
   const bills = useQuery(
-    api.bills.listByUser,
-    convexUserId ? { userId: convexUserId } : "skip"
+    api.bills.listMine,
+    firebaseSessionReady ? {} : "skip"
   );
   const transactions = useQuery(
-    api.payments.getTransactionsByUser,
-    convexUserId ? { userId: convexUserId } : "skip"
+    api.payments.listMine,
+    firebaseSessionReady ? {} : "skip"
   );
   const totalDue = useQuery(
-    api.bills.getTotalDue,
-    convexUserId ? { userId: convexUserId } : "skip"
+    api.bills.getTotalDueMine,
+    firebaseSessionReady ? {} : "skip"
   );
 
   const createBill = useMutation(api.bills.create);
 
   const handleCreateBill = async () => {
-    if (!convexUserId || !billTitle || !billAmount || !billCategory) {
+    if (!billTitle || !billAmount || !billCategory) {
       Alert.alert("Missing Info", "Please fill in all required fields.");
       return;
     }
@@ -62,7 +70,6 @@ export default function PaymentsScreen() {
     setCreating(true);
     try {
       await createBill({
-        userId: convexUserId,
         title: billTitle,
         category: billCategory,
         amount: Math.round(parseFloat(billAmount) * 100),
@@ -102,7 +109,37 @@ export default function PaymentsScreen() {
     { key: "all", label: "All" },
     { key: "completed", label: "Completed" },
     { key: "pending", label: "Pending" },
+    { key: "failed", label: "Failed" },
   ];
+
+  const handleExportTransactions = async () => {
+    const list = filteredTransactions ?? [];
+    if (list.length === 0) {
+      Alert.alert("No Data", "No transactions to export.");
+      return;
+    }
+    const header = "Date,Type,Description,Amount,Status\n";
+    const rows = list
+      .map((t) =>
+        [
+          escapeCsvCell(new Date(t.createdAt).toISOString().split("T")[0]),
+          escapeCsvCell(t.type),
+          escapeCsvCell(t.merchantName || t.description || ""),
+          escapeCsvCell((t.amount / 100).toFixed(2)),
+          escapeCsvCell(t.status),
+        ].join(",")
+      )
+      .join("\n");
+    const csv = header + rows;
+    try {
+      await Share.share({
+        message: csv,
+        title: "LockDigit Transaction Export",
+      });
+    } catch {
+      // user dismissed
+    }
+  };
 
   return (
     <View className="flex-1 bg-ios-bg">
@@ -113,13 +150,23 @@ export default function PaymentsScreen() {
             <Text className="text-2xl font-bold text-ios-dark">
               Transaction History
             </Text>
-            <TouchableOpacity
-              onPress={() => setShowAddBill(true)}
-              className="w-10 h-10 rounded-full bg-primary items-center justify-center"
-              style={styles.addShadow}
-            >
-              <Ionicons name="add" size={24} color="#FFFFFF" />
-            </TouchableOpacity>
+            <View className="flex-row items-center gap-2">
+              {filteredTransactions && filteredTransactions.length > 0 && (
+                <TouchableOpacity
+                  onPress={handleExportTransactions}
+                  className="w-10 h-10 rounded-full bg-ios-bg border border-ios-border items-center justify-center"
+                >
+                  <Ionicons name="share-outline" size={20} color="#0A84FF" />
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity
+                onPress={() => setShowAddBill(true)}
+                className="w-10 h-10 rounded-full bg-primary items-center justify-center"
+                style={styles.addShadow}
+              >
+                <Ionicons name="add" size={24} color="#FFFFFF" />
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
 

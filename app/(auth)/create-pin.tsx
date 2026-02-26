@@ -9,7 +9,7 @@ import {
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { useMutation, useQuery } from "convex/react";
+import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { createPin, isPinValid } from "@/lib/pin-manager";
@@ -22,19 +22,15 @@ type PinLength = 4 | 6;
 
 export default function CreatePinScreen() {
   const router = useRouter();
-  const { phone, name, isNewUser, resetPin } = useLocalSearchParams<{
+  const { phone, name, resetPin } = useLocalSearchParams<{
     phone: string;
     name: string;
-    isNewUser: string;
     resetPin?: string;
   }>();
 
-  const createUser = useMutation(api.users.createUser);
+  const bootstrapSession = useMutation(api.users.bootstrapSession);
   const updatePin = useMutation(api.users.updatePin);
-  const existingUser = useQuery(
-    api.users.getByPhone,
-    resetPin === "true" && phone ? { phone } : "skip"
-  );
+  const rollbackBootstrapUser = useMutation(api.users.rollbackBootstrapUser);
 
   const [pinLength, setPinLength] = useState<PinLength>(4);
   const [pin, setPin] = useState("");
@@ -42,7 +38,6 @@ export default function CreatePinScreen() {
   const [step, setStep] = useState<"choose_length" | "enter" | "confirm">(
     "choose_length"
   );
-  const [loading, setLoading] = useState(false);
   const shakeAnim = useRef(new Animated.Value(0)).current;
 
   const { setAuthenticated, setPinCreated } = useAuthStore();
@@ -120,54 +115,40 @@ export default function CreatePinScreen() {
   };
 
   const handleCreatePin = async (finalPin: string) => {
-    if (resetPin === "true") {
-      if (existingUser === undefined) {
-        Alert.alert("Please wait", "Verifying your account…");
-        return;
-      }
-      if (existingUser === null || !phone) {
-        Alert.alert(
-          "Not Registered",
-          "This number is not registered. Please sign up first."
-        );
-        return;
-      }
-    }
-
-    setLoading(true);
     try {
       const { hash, salt } = await createPin(finalPin);
       await SecureStoreHelper.storePinLength(String(pinLength));
 
-      if (resetPin === "true" && existingUser && phone) {
-        await updatePin({
-          userId: existingUser._id,
-          pinHash: hash,
-          pinSalt: salt,
-          pinLength,
-        });
-        await SecureStoreHelper.storeUserId(existingUser._id);
-        await SecureStoreHelper.storePhone(phone);
-        await SecureStoreHelper.setSetupComplete();
-        setAuthenticated(existingUser._id, phone);
-      } else if (isNewUser === "true" && phone) {
-        const deviceId = await getOrCreateDeviceFingerprint();
-        const userId = await createUser({
-          name: name || "User",
-          phone,
-          pinHash: hash,
-          pinSalt: salt,
-          pinLength,
-          deviceId,
-        });
+      const deviceId = await getOrCreateDeviceFingerprint();
+      const session = await bootstrapSession({
+        name: name || "User",
+        phone: phone || undefined,
+        deviceId,
+      });
 
-        await SecureStoreHelper.storeUserId(userId);
-        await SecureStoreHelper.storePhone(phone);
-        await SecureStoreHelper.setSetupComplete();
-        setAuthenticated(userId, phone);
-      } else {
-        await SecureStoreHelper.setSetupComplete();
+      try {
+        await updatePin({
+          pinHash: hash,
+          pinSalt: salt,
+          pinLength,
+        });
+      } catch (updateError: any) {
+        if (session.isNewUser) {
+          try {
+            await rollbackBootstrapUser({ userId: session.userId });
+          } catch {
+            // Best-effort rollback
+          }
+        }
+        throw updateError;
       }
+
+      await SecureStoreHelper.storeUserId(session.userId);
+      if (phone) {
+        await SecureStoreHelper.storePhone(phone);
+      }
+      await SecureStoreHelper.setSetupComplete();
+      setAuthenticated(session.userId, phone || "");
 
       setPinCreated();
       router.replace("/(app)/(tabs)/home");
@@ -180,8 +161,6 @@ export default function CreatePinScreen() {
       setPin("");
       setConfirmPin("");
       setStep("enter");
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -266,14 +245,6 @@ export default function CreatePinScreen() {
               {resetPin === "true" ? "Create new PIN" : "Create PIN"}
             </Text>
           </View>
-
-          {resetPin === "true" && existingUser === null && (
-            <View className="mx-5 mt-2 p-4 bg-red-50 border border-red-200 rounded-2xl">
-              <Text className="text-red-600 text-sm text-center">
-                This number is not registered. Go back and use your registered number.
-              </Text>
-            </View>
-          )}
 
           <View className="flex-1 px-5 justify-center">
             <View className="items-center mb-10">

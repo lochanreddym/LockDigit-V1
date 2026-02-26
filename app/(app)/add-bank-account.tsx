@@ -1,10 +1,9 @@
-import React, { useState, useRef } from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
   TextInput,
   TouchableOpacity,
-  StyleSheet,
   Alert,
   KeyboardAvoidingView,
   Platform,
@@ -54,8 +53,8 @@ export default function AddBankAccountScreen() {
 
     setLoading(true);
     try {
-      const salt = await generateSalt();
-      const paymentPinHash = await hashPin(pin, salt);
+      const paymentPinSalt = await generateSalt();
+      const paymentPinHash = await hashPin(pin, paymentPinSalt);
       await addBankAccount({
         userId: convexUserId,
         bankName: bankName.trim(),
@@ -63,7 +62,7 @@ export default function AddBankAccountScreen() {
         isDefault: true,
         type: "bank",
         paymentPinHash,
-        paymentPinSalt: salt,
+        paymentPinSalt,
       });
       Alert.alert("Done", "Bank account added. Use this PIN to view balance and pay.", [
         { text: "OK", onPress: () => router.replace("/(app)/my-wallet") },

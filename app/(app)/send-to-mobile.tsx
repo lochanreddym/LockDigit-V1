@@ -5,7 +5,6 @@ import {
   TouchableOpacity,
   StyleSheet,
   TextInput,
-  FlatList,
   SectionList,
   Alert,
 } from "react-native";
@@ -19,6 +18,7 @@ import { Id } from "@/convex/_generated/dataModel";
 
 let Contacts: any = null;
 try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   Contacts = require("expo-contacts");
 } catch {}
 
@@ -51,6 +51,10 @@ export default function SendToMobileScreen() {
 
   const loadDeviceContacts = async () => {
     if (!Contacts) {
+      setContactsPermission("denied");
+      return;
+    }
+    if (!Contacts.requestPermissionsAsync) {
       setContactsPermission("denied");
       return;
     }

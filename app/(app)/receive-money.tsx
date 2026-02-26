@@ -4,7 +4,6 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  ScrollView,
   Alert,
   Share,
   Platform,
@@ -18,24 +17,12 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useAuthStore } from "@/hooks/useAuth";
+import { useFirebaseSessionReady } from "@/hooks/useFirebaseSessionReady";
 import { Id } from "@/convex/_generated/dataModel";
 import QRCode from "react-native-qrcode-svg";
-let MediaLibrary: any = null;
-let FSFile: any = null;
-let Paths: any = null;
-let Sharing: any = null;
-
-try {
-  MediaLibrary = require("expo-media-library");
-} catch {}
-try {
-  const fs = require("expo-file-system");
-  FSFile = fs.File;
-  Paths = fs.Paths;
-} catch {}
-try {
-  Sharing = require("expo-sharing");
-} catch {}
+import * as MediaLibrary from "expo-media-library";
+import { File, Paths } from "expo-file-system";
+import * as Sharing from "expo-sharing";
 import { getBankLogo } from "@/lib/card-utils";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
@@ -51,19 +38,18 @@ type BankAccount = {
 
 export default function ReceiveMoneyScreen() {
   const router = useRouter();
-  const { userId, phone } = useAuthStore();
-  const convexUserId = userId as Id<"users"> | null;
+  const firebaseSessionReady = useFirebaseSessionReady();
+  const { phone } = useAuthStore();
   const qrRefs = useRef<Record<string, any>>({});
   const [activeIndex, setActiveIndex] = useState(0);
 
   const user = useQuery(
-    api.users.getById,
-    convexUserId ? { userId: convexUserId } : "skip"
+    api.users.getMe,
+    firebaseSessionReady ? {} : "skip"
   );
-
   const bankAccounts = useQuery(
     api.payments.listBankAccounts,
-    convexUserId ? { userId: convexUserId } : "skip"
+    firebaseSessionReady ? {} : "skip"
   );
 
   const accounts = useMemo(() => {
@@ -102,84 +88,90 @@ export default function ReceiveMoneyScreen() {
     []
   );
 
-  const handleSaveToGallery = async (accountId: string) => {
-    if (!MediaLibrary || !FSFile || !Paths) {
-      Alert.alert(
-        "Rebuild Required",
-        "Save to gallery requires a new development build. Run: npx expo run:ios",
-        [{ text: "OK" }]
-      );
-      return;
-    }
-
-    try {
-      const { status } = await MediaLibrary.requestPermissionsAsync();
-      if (status !== "granted") {
+  const handleSaveToGallery = useCallback(
+    async (accountId: string) => {
+      if (!MediaLibrary.requestPermissionsAsync) {
         Alert.alert(
-          "Permission Required",
-          "Please grant media library access to save QR codes."
+          "Rebuild Required",
+          "Save to gallery requires a new development build. Run: npx expo run:ios",
+          [{ text: "OK" }]
         );
         return;
       }
 
-      const base64 = await getQRBase64(accountId);
-      if (!base64) {
-        Alert.alert("Error", "Unable to capture QR code.");
-        return;
+      try {
+        const { status } = await MediaLibrary.requestPermissionsAsync();
+        if (status !== "granted") {
+          Alert.alert(
+            "Permission Required",
+            "Please grant media library access to save QR codes."
+          );
+          return;
+        }
+
+        const base64 = await getQRBase64(accountId);
+        if (!base64) {
+          Alert.alert("Error", "Unable to capture QR code.");
+          return;
+        }
+
+        const file = new File(Paths.cache, `lockdigit-qr-${Date.now()}.png`);
+        await file.create();
+        await file.write(base64, { encoding: "base64" });
+
+        await MediaLibrary.saveToLibraryAsync(file.uri);
+        Alert.alert("Saved", "QR code saved to your photo gallery.");
+      } catch {
+        Alert.alert("Error", "Failed to save QR code to gallery.");
       }
+    },
+    [getQRBase64]
+  );
 
-      const file = new FSFile(Paths.cache, `lockdigit-qr-${Date.now()}.png`);
-      file.create();
-      file.write(base64, { encoding: "base64" });
+  const handleShare = useCallback(
+    async (account: BankAccount) => {
+      try {
+        const qrPayload = getQRPayload(account);
+        const shareText = `Pay me on LockDigit!\n\nScan this link to send money:\n${qrPayload}`;
 
-      await MediaLibrary.saveToLibraryAsync(file.uri);
-      Alert.alert("Saved", "QR code saved to your photo gallery.");
-    } catch {
-      Alert.alert("Error", "Failed to save QR code to gallery.");
-    }
-  };
+        if (Platform.OS === "web") {
+          await Share.share({
+            message: shareText,
+            title: "LockDigit - Receive Money",
+          });
+          return;
+        }
 
-  const handleShare = async (account: BankAccount) => {
-    try {
-      const qrPayload = getQRPayload(account);
-      const shareText = `Pay me on LockDigit!\n\nScan this link to send money:\n${qrPayload}`;
+        const base64 = await getQRBase64(account._id);
+        if (!base64) {
+          await Share.share({
+            message: shareText,
+            title: "LockDigit - Receive Money",
+          });
+          return;
+        }
 
-      if (Platform.OS === "web" || !FSFile || !Paths || !Sharing) {
-        await Share.share({
-          message: shareText,
-          title: "LockDigit - Receive Money",
-        });
-        return;
+        const file = new File(Paths.cache, `lockdigit-qr-${Date.now()}.png`);
+        await file.create();
+        await file.write(base64, { encoding: "base64" });
+
+        if (await Sharing.isAvailableAsync()) {
+          await Sharing.shareAsync(file.uri, {
+            mimeType: "image/png",
+            dialogTitle: "Share your LockDigit QR Code",
+          });
+        } else {
+          await Share.share({
+            message: shareText,
+            title: "LockDigit - Receive Money",
+          });
+        }
+      } catch {
+        // user dismissed
       }
-
-      const base64 = await getQRBase64(account._id);
-      if (!base64) {
-        await Share.share({
-          message: shareText,
-          title: "LockDigit - Receive Money",
-        });
-        return;
-      }
-
-      const file = new FSFile(Paths.cache, `lockdigit-qr-${Date.now()}.png`);
-      file.create();
-      file.write(base64, { encoding: "base64" });
-
-      if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(file.uri, {
-          mimeType: "image/png",
-          dialogTitle: "Share your LockDigit QR Code",
-        });
-      } else {
-        await Share.share({
-          message: shareText,
-          title: "LockDigit - Receive Money",
-        });
-      }
-    } catch {
-      // user dismissed
-    }
-  };
+    },
+    [getQRBase64, getQRPayload]
+  );
 
   const onScroll = useCallback(
     (event: any) => {
@@ -282,7 +274,7 @@ export default function ReceiveMoneyScreen() {
         </View>
       );
     },
-    [getQRPayload, userIdentifier]
+    [getQRPayload, handleSaveToGallery, handleShare, userIdentifier]
   );
 
   return (

@@ -14,13 +14,11 @@ import { api } from "@/convex/_generated/api";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { DocumentCard } from "@/components/documents";
 import { BillCard } from "@/components/payments";
-import { useAuthStore } from "@/hooks/useAuth";
-import { Id } from "@/convex/_generated/dataModel";
+import { useFirebaseSessionReady } from "@/hooks/useFirebaseSessionReady";
 
 export default function SearchScreen() {
   const router = useRouter();
-  const { userId } = useAuthStore();
-  const convexUserId = userId as Id<"users"> | null;
+  const firebaseSessionReady = useFirebaseSessionReady();
 
   const [query, setQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<"all" | "documents" | "bills">(
@@ -33,22 +31,28 @@ export default function SearchScreen() {
   }, []);
 
   const documentResults = useQuery(
-    api.documents.search,
-    convexUserId && query.length >= 2
-      ? { userId: convexUserId, searchQuery: query }
+    api.documents.searchMine,
+    firebaseSessionReady && query.length >= 2
+      ? { searchQuery: query }
       : "skip"
   );
 
   const billResults = useQuery(
-    api.bills.search,
-    convexUserId && query.length >= 2
-      ? { userId: convexUserId, searchQuery: query }
+    api.bills.searchMine,
+    firebaseSessionReady && query.length >= 2
+      ? { searchQuery: query }
       : "skip"
   );
 
+  const searchRequested = query.length >= 2;
+  const waitingForSession = searchRequested && !firebaseSessionReady;
+  const isSearching = searchRequested && firebaseSessionReady;
+  const documentsLoaded = !isSearching || documentResults !== undefined;
+  const billsLoaded = !isSearching || billResults !== undefined;
+  const isLoading = isSearching && (!documentsLoaded || !billsLoaded);
   const hasResults =
-    (documentResults && documentResults.length > 0) ||
-    (billResults && billResults.length > 0);
+    (documentResults?.length ?? 0) > 0 || (billResults?.length ?? 0) > 0;
+  const showEmptyState = isSearching && documentsLoaded && billsLoaded && !hasResults;
 
   const filters = [
     { id: "all" as const, label: "All" },
@@ -164,6 +168,16 @@ export default function SearchScreen() {
                 ))}
               </View>
             </View>
+          ) : waitingForSession ? (
+            <View className="items-center mt-20">
+              <Text className="text-ios-grey4 text-base">
+                Initializing secure session...
+              </Text>
+            </View>
+          ) : isLoading ? (
+            <View className="items-center mt-20">
+              <Text className="text-ios-grey4 text-base">Searching...</Text>
+            </View>
           ) : hasResults ? (
             <>
               {(activeFilter === "all" || activeFilter === "documents") &&
@@ -220,17 +234,17 @@ export default function SearchScreen() {
                   </View>
                 )}
             </>
-          ) : (
+          ) : showEmptyState ? (
             <View className="items-center mt-20">
               <Ionicons name="search" size={48} color="#C7C7CC" />
               <Text className="text-ios-grey4 text-base mt-3">
-                No results found for "{query}"
+                No results found for &quot;{query}&quot;
               </Text>
               <Text className="text-ios-grey3 text-sm mt-1">
                 Try different keywords
               </Text>
             </View>
-          )}
+          ) : null}
         </ScrollView>
       </SafeAreaView>
     </View>

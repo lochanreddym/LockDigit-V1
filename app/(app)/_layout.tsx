@@ -18,8 +18,11 @@ export default function AppLayout() {
       <Stack.Screen name="document/[id]" />
       <Stack.Screen name="bill/[id]" />
       <Stack.Screen name="search" />
-      <Stack.Screen name="categories" />
+      <Stack.Screen name="categories/index" />
       <Stack.Screen name="categories/[category]" />
+      <Stack.Screen name="document-categories/index" />
+      <Stack.Screen name="document-categories/[category]" />
+      <Stack.Screen name="document-categories/select-state" />
       <Stack.Screen name="payment-success" />
       <Stack.Screen name="add-credential" />
       <Stack.Screen name="my-wallet" />
@@ -33,6 +36,8 @@ export default function AppLayout() {
       <Stack.Screen name="self-transfer" />
       <Stack.Screen name="send-to-account" />
       <Stack.Screen name="send-internationally" />
+      <Stack.Screen name="verified-credentials" />
+      <Stack.Screen name="verify-document" />
     </Stack>
   );
 }

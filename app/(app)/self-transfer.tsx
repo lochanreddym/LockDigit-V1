@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
@@ -24,6 +24,7 @@ import { useAuthStore } from "@/hooks/useAuth";
 import { Id } from "@/convex/_generated/dataModel";
 
 type Step = "amount" | "source" | "confirm";
+const MAX_PAYMENT_PIN_ATTEMPTS = 5;
 
 export default function SelfTransferScreen() {
   const router = useRouter();
@@ -49,6 +50,7 @@ export default function SelfTransferScreen() {
   const [pin, setPin] = useState("");
   const [pinError, setPinError] = useState("");
   const [pinAttempts, setPinAttempts] = useState(0);
+  const [isVerifying, setIsVerifying] = useState(false);
 
   const destAccount = accounts?.find((a) => a._id === destAccountId);
   const sourceAccount = sourceAccountId
@@ -87,47 +89,53 @@ export default function SelfTransferScreen() {
     setShowPinModal(true);
   };
 
-  const handlePinSubmit = useCallback(
-    async (enteredPin: string) => {
-      if (!sourceAccountId) return;
-      try {
-        const valid = await verifyPin({
-          accountId: sourceAccountId,
-          pin: enteredPin,
-        });
-        if (valid) {
+  const handlePinSubmit = async (enteredPin: string) => {
+    if (!sourceAccountId || isVerifying) return;
+    setIsVerifying(true);
+    try {
+      const result = await verifyPin({
+        accountId: sourceAccountId,
+        pin: enteredPin,
+      });
+      if (result.success) {
+        setShowPinModal(false);
+        setPin("");
+        setPinError("");
+        setPinAttempts(0);
+        await executeTransfer();
+      } else {
+        const attemptsMade =
+          typeof result.attemptsMade === "number"
+            ? result.attemptsMade
+            : pinAttempts + 1;
+        const remainingAttempts =
+          typeof result.remainingAttempts === "number"
+            ? result.remainingAttempts
+            : Math.max(0, MAX_PAYMENT_PIN_ATTEMPTS - attemptsMade);
+
+        setPinAttempts(attemptsMade);
+        Vibration.vibrate(300);
+        if (result.locked || remainingAttempts <= 0) {
           setShowPinModal(false);
           setPin("");
           setPinError("");
-          setPinAttempts(0);
-          executeTransfer();
+          Alert.alert(
+            "Too Many Attempts",
+            "You've exceeded the maximum number of PIN attempts. Please try again later.",
+            [{ text: "OK", onPress: () => router.back() }]
+          );
         } else {
-          const newAttempts = pinAttempts + 1;
-          setPinAttempts(newAttempts);
-          Vibration.vibrate(300);
-          if (newAttempts >= 5) {
-            setShowPinModal(false);
-            setPin("");
-            setPinError("");
-            Alert.alert(
-              "Too Many Attempts",
-              "You've exceeded the maximum number of PIN attempts. Please try again later.",
-              [{ text: "OK", onPress: () => router.back() }]
-            );
-          } else {
-            setPinError(
-              `Incorrect PIN. ${5 - newAttempts} attempts remaining.`
-            );
-            setPin("");
-          }
+          setPinError(`Incorrect PIN. ${remainingAttempts} attempts remaining.`);
+          setPin("");
         }
-      } catch {
-        setPinError("Verification failed. Please try again.");
-        setPin("");
       }
-    },
-    [pinAttempts, sourceAccountId]
-  );
+    } catch {
+      setPinError("Verification failed. Please try again.");
+      setPin("");
+    } finally {
+      setIsVerifying(false);
+    }
+  };
 
   const executeTransfer = async () => {
     if (!convexUserId || !sourceAccount || !destAccount) return;
@@ -476,6 +484,7 @@ export default function SelfTransferScreen() {
                         <TouchableOpacity
                           key={key}
                           onPress={() => {
+                            if (isVerifying) return;
                             const next = pin + String(key);
                             if (next.length <= 6) {
                               setPin(next);
@@ -485,6 +494,7 @@ export default function SelfTransferScreen() {
                               }
                             }
                           }}
+                          disabled={isVerifying}
                           className="w-20 h-14 rounded-2xl bg-ios-bg items-center justify-center"
                         >
                           <Text className="text-ios-dark text-xl font-semibold">

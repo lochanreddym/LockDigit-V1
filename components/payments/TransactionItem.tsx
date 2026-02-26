@@ -4,7 +4,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { formatCurrency, formatDate } from "@/lib/utils";
 
 interface TransactionItemProps {
-  type: "payment" | "scan_to_pay" | "bill_payment";
+  type: "payment" | "scan_to_pay" | "bill_payment" | "transfer" | "wire_transfer";
   amount: number;
   description: string;
   merchantName?: string;
@@ -16,6 +16,8 @@ const typeIcons: Record<string, keyof typeof Ionicons.glyphMap> = {
   payment: "card-outline",
   scan_to_pay: "qr-code-outline",
   bill_payment: "receipt-outline",
+  transfer: "swap-horizontal-outline",
+  wire_transfer: "arrow-redo-outline",
 };
 
 const statusColors: Record<string, string> = {

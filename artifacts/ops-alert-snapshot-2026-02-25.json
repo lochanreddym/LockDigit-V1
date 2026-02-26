@@ -1,0 +1,17 @@
+{
+  "auth": {
+    "pinFailuresLast15m": 0,
+    "spikeThreshold": 20
+  },
+  "generatedAt": 1772056192150,
+  "payments": {
+    "stalePendingCount": 4,
+    "staleThresholdMs": 1800000
+  },
+  "webhook": {
+    "failedCount": 0,
+    "laggedCount": 0,
+    "maxLagMs": 0,
+    "recentEvents": 2
+  }
+}
