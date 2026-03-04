@@ -12,12 +12,21 @@ import {
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { verifyOTP, sendOTP } from "@/lib/firebase";
+import { useConvex } from "convex/react";
+import { api } from "@/convex/_generated/api";
+import { getOrCreateDeviceFingerprint } from "@/lib/device-binding";
+import {
+  verifyOTP,
+  sendOTP,
+  ensureFirebaseSession,
+  getFirebaseToken,
+} from "@/lib/firebase";
 
 const OTP_LENGTH = 6;
 
 export default function VerifyScreen() {
   const router = useRouter();
+  const convex = useConvex();
   const { phone, name, simulatorTest, resetPin } = useLocalSearchParams<{
     phone: string;
     name: string;
@@ -28,7 +37,58 @@ export default function VerifyScreen() {
   const [otp, setOtp] = useState<string[]>(new Array(OTP_LENGTH).fill(""));
   const [loading, setLoading] = useState(false);
   const [resendTimer, setResendTimer] = useState(30);
+  const simulatorTestValue =
+    typeof simulatorTest === "string" ? simulatorTest : "";
+  const devSimulatorBypassAllowed =
+    __DEV__ && simulatorTestValue === "true";
+  // Safeguard: simulator OTP bypass can only be enabled in development.
+  const [simulatorBypassEnabled, setSimulatorBypassEnabled] = useState(
+    devSimulatorBypassAllowed
+  );
+  const isSimulatorBypassActive =
+    __DEV__ && devSimulatorBypassAllowed && simulatorBypassEnabled;
   const inputRefs = useRef<(TextInput | null)[]>([]);
+  const phoneValue = typeof phone === "string" ? phone : "";
+
+  const routeToExistingPinIfNeeded = async () => {
+    if (resetPin === "true" || !phoneValue) return false;
+    try {
+      const deviceId = await getOrCreateDeviceFingerprint();
+      const status = await convex.query(api.users.getPhoneAuthStatus, {
+        phone: phoneValue,
+        deviceId,
+      });
+      if (
+        status.exists &&
+        status.hasPin &&
+        status.isBoundToCurrentDevice
+      ) {
+        router.replace({
+          pathname: "/(auth)/verify-pin",
+          params: {
+            phone: phoneValue,
+            pinLogin: "true",
+            pinLength: String(status.pinLength ?? 4),
+          },
+        });
+        return true;
+      }
+    } catch (error) {
+      if (__DEV__) {
+        console.warn("Phone auth status check failed in verify flow:", error);
+      }
+    }
+    return false;
+  };
+
+  const waitForFirebaseToken = async () => {
+    for (let i = 0; i < 10; i += 1) {
+      const token = await getFirebaseToken();
+      if (token) return token;
+      await new Promise((resolve) => setTimeout(resolve, 150));
+    }
+    return null;
+  };
 
   // Countdown timer for resend
   useEffect(() => {
@@ -90,8 +150,31 @@ export default function VerifyScreen() {
 
     setLoading(true);
     try {
-      if (simulatorTest === "true") {
-        // iOS Simulator: skip real Firebase verify and continue to create PIN for testing
+      if (isSimulatorBypassActive) {
+        if (await routeToExistingPinIfNeeded()) {
+          setLoading(false);
+          return;
+        }
+
+        // iOS Simulator: bootstrap a Firebase session so Convex auth can succeed.
+        try {
+          await ensureFirebaseSession();
+        } catch {
+          setSimulatorBypassEnabled(false);
+          Alert.alert(
+            "Simulator Not Supported",
+            "This Firebase project blocks simulator bypass and iOS simulator phone OTP can crash with this config. Use a real device, or update GoogleService-Info.plist from Firebase Console."
+          );
+          router.replace({
+            pathname: "/(auth)/login",
+            params: {
+              forceRealOtp: "true",
+              ...(resetPin === "true" && { resetPin: "true" }),
+            },
+          });
+          return;
+        }
+
         router.replace({
           pathname: "/(auth)/create-pin",
           params: {
@@ -106,6 +189,21 @@ export default function VerifyScreen() {
 
       const user = await verifyOTP(otpCode);
       if (user) {
+        const token = await waitForFirebaseToken();
+        if (!token) {
+          Alert.alert(
+            "Session Error",
+            "Could not establish an authenticated session. Please try verifying again."
+          );
+          setLoading(false);
+          return;
+        }
+
+        if (await routeToExistingPinIfNeeded()) {
+          setLoading(false);
+          return;
+        }
+
         router.replace({
           pathname: "/(auth)/create-pin",
           params: {
@@ -170,12 +268,13 @@ export default function VerifyScreen() {
                 Verify Your Number
               </Text>
               <Text className="text-ios-grey4 text-base mt-2 text-center">
-                {simulatorTest === "true"
+                {isSimulatorBypassActive
                   ? "Simulator: enter any 6 digits to continue testing."
                   : null}
-                {simulatorTest !== "true" && "Enter the 6-digit code sent to\n"}
-                {simulatorTest !== "true" && (
-                  <Text className="text-primary font-medium">{phone}</Text>
+                {isSimulatorBypassActive !== true &&
+                  "Enter the 6-digit code sent to\n"}
+                {isSimulatorBypassActive !== true && (
+                  <Text className="text-primary font-medium">{phoneValue}</Text>
                 )}
               </Text>
             </View>

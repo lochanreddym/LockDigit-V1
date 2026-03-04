@@ -16,11 +16,11 @@ import { useFirebaseSessionReady } from "@/hooks/useFirebaseSessionReady";
 
 export default function DocumentCategoryDetailScreen() {
   const router = useRouter();
-  const firebaseSessionReady = useFirebaseSessionReady();
+  const { hasUser: firebaseHasUser } = useFirebaseSessionReady();
   const { category } = useLocalSearchParams<{ category: string }>();
   const documents = useQuery(
     api.documents.listMine,
-    firebaseSessionReady ? {} : "skip"
+    firebaseHasUser ? {} : "skip"
   );
 
   const cat = DOCUMENT_CATEGORIES.find((c) => c.id === category);

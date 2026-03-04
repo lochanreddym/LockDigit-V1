@@ -51,16 +51,16 @@ function maskId(idNumber: string): string {
 
 export default function HomeScreen() {
   const router = useRouter();
-  const firebaseSessionReady = useFirebaseSessionReady();
+  const { hasUser: firebaseHasUser } = useFirebaseSessionReady();
   const [qrZoomVisible, setQrZoomVisible] = useState(false);
 
   const user = useQuery(
     api.users.getMe,
-    firebaseSessionReady ? {} : "skip"
+    firebaseHasUser ? {} : "skip"
   );
   const documents = useQuery(
     api.documents.listMine,
-    firebaseSessionReady ? {} : "skip"
+    firebaseHasUser ? {} : "skip"
   );
   const identityRequest = undefined as
     | { fullName?: string; idNumber?: string }
@@ -72,7 +72,7 @@ export default function HomeScreen() {
   );
   const upcomingBills = useQuery(
     api.bills.getUpcomingMine,
-    firebaseSessionReady ? { daysAhead: 7 } : "skip"
+    firebaseHasUser ? { daysAhead: 7 } : "skip"
   );
 
   const verifiedCount = documents?.filter((d) => d.verified).length ?? 0;

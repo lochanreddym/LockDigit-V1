@@ -29,6 +29,25 @@ type ContactItem = {
   isRecent?: boolean;
 };
 
+const MOBILE_NUMBER_LENGTH = 10;
+
+function normalizePhone(input: string): string {
+  const trimmed = input.trim();
+  if (!trimmed) return "";
+  const hasPlus = trimmed.startsWith("+");
+  const digits = trimmed.replace(/\D/g, "");
+  if (!digits) return "";
+  return `${hasPlus ? "+" : ""}${digits}`;
+}
+
+function getPhoneDigits(input: string): string {
+  return input.replace(/\D/g, "");
+}
+
+function normalizeMobileInput(input: string): string {
+  return getPhoneDigits(input).slice(0, MOBILE_NUMBER_LENGTH);
+}
+
 export default function SendToMobileScreen() {
   const router = useRouter();
   const { userId } = useAuthStore();
@@ -73,18 +92,21 @@ export default function SendToMobileScreen() {
       });
 
       const mapped: ContactItem[] = [];
+      const seenPhones = new Set<string>();
       for (const contact of data) {
-        if (contact.phoneNumbers?.length) {
-          const phone = contact.phoneNumbers[0].number?.replace(/[\s\-()]/g, "") || "";
-          if (phone) {
-            mapped.push({
-              id: contact.id || phone,
-              name:
-                [contact.firstName, contact.lastName].filter(Boolean).join(" ") ||
-                phone,
-              phone,
-            });
-          }
+        const name =
+          [contact.firstName, contact.lastName].filter(Boolean).join(" ") ||
+          "Unnamed";
+        const numbers = contact.phoneNumbers ?? [];
+        for (const entry of numbers) {
+          const phone = normalizePhone(entry.number || "");
+          if (!phone || seenPhones.has(phone)) continue;
+          seenPhones.add(phone);
+          mapped.push({
+            id: `${contact.id || "contact"}-${phone}`,
+            name,
+            phone,
+          });
         }
       }
       setDeviceContacts(mapped);
@@ -116,26 +138,43 @@ export default function SendToMobileScreen() {
     return sorted;
   }, [deviceContacts, recentPhones]);
 
+  const handleSearchChange = (value: string) => {
+    const withoutLeadingSpaces = value.trimStart();
+    if (/^[+\d]/.test(withoutLeadingSpaces)) {
+      setSearch(normalizeMobileInput(value));
+      return;
+    }
+    setSearch(value);
+  };
+
   const searchLower = search.toLowerCase().trim();
-  const isPhoneSearch = /^\+?\d[\d\s-]*$/.test(search.trim());
+  const searchDigits = getPhoneDigits(search);
+  const normalizedSearchPhone = normalizeMobileInput(search);
+  const isPhoneSearch = /^[+\d]/.test(search.trimStart()) && searchDigits.length > 0;
 
   const filteredRecent = useMemo(() => {
     if (!searchLower) return recentContactItems;
-    return recentContactItems.filter(
-      (c) =>
-        c.name.toLowerCase().includes(searchLower) ||
-        c.phone.includes(searchLower)
-    );
-  }, [recentContactItems, searchLower]);
+    return recentContactItems.filter((contact) => {
+      const nameMatch = contact.name.toLowerCase().includes(searchLower);
+      const rawPhoneMatch = contact.phone.includes(searchLower);
+      const digitsMatch =
+        searchDigits.length > 0 &&
+        getPhoneDigits(contact.phone).includes(searchDigits);
+      return nameMatch || rawPhoneMatch || digitsMatch;
+    });
+  }, [recentContactItems, searchLower, searchDigits]);
 
   const filteredOther = useMemo(() => {
     if (!searchLower) return filteredDeviceContacts;
-    return filteredDeviceContacts.filter(
-      (c) =>
-        c.name.toLowerCase().includes(searchLower) ||
-        c.phone.includes(searchLower)
-    );
-  }, [filteredDeviceContacts, searchLower]);
+    return filteredDeviceContacts.filter((contact) => {
+      const nameMatch = contact.name.toLowerCase().includes(searchLower);
+      const rawPhoneMatch = contact.phone.includes(searchLower);
+      const digitsMatch =
+        searchDigits.length > 0 &&
+        getPhoneDigits(contact.phone).includes(searchDigits);
+      return nameMatch || rawPhoneMatch || digitsMatch;
+    });
+  }, [filteredDeviceContacts, searchLower, searchDigits]);
 
   const sections = useMemo(() => {
     const result: { title: string; data: ContactItem[] }[] = [];
@@ -156,9 +195,9 @@ export default function SendToMobileScreen() {
   };
 
   const handleManualSend = () => {
-    const cleaned = search.replace(/[\s\-()]/g, "");
-    if (cleaned.length < 7) {
-      Alert.alert("Invalid Number", "Please enter a valid phone number.");
+    const cleaned = normalizeMobileInput(search);
+    if (cleaned.length !== MOBILE_NUMBER_LENGTH) {
+      Alert.alert("Invalid Number", "Please enter a valid 10-digit phone number.");
       return;
     }
     router.push({
@@ -261,8 +300,8 @@ export default function SendToMobileScreen() {
             <Ionicons name="search" size={20} color="#8E8E93" />
             <TextInput
               value={search}
-              onChangeText={setSearch}
-              placeholder="Enter name or phone number"
+              onChangeText={handleSearchChange}
+              placeholder="Search contacts or enter 10-digit number"
               placeholderTextColor="#8E8E93"
               className="flex-1 py-3.5 px-3 text-ios-dark text-[15px]"
               keyboardType="default"
@@ -278,7 +317,7 @@ export default function SendToMobileScreen() {
         </View>
 
         {/* Send to entered number */}
-        {isPhoneSearch && search.replace(/[\s\-()]/g, "").length >= 7 && (
+        {isPhoneSearch && searchDigits.length === MOBILE_NUMBER_LENGTH && (
           <TouchableOpacity
             onPress={handleManualSend}
             activeOpacity={0.7}
@@ -293,7 +332,7 @@ export default function SendToMobileScreen() {
               </View>
               <View className="flex-1">
                 <Text className="text-ios-dark font-semibold text-[15px]">
-                  Send to {search.trim()}
+                  Send to {normalizedSearchPhone}
                 </Text>
                 <Text className="text-ios-grey4 text-xs mt-0.5">
                   Tap to enter amount

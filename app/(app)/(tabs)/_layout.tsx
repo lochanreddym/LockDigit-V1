@@ -6,13 +6,18 @@ import { StyleSheet, Platform } from "react-native";
 export default function TabLayout() {
   return (
     <Tabs
+      detachInactiveScreens={false}
       screenOptions={{
         headerShown: false,
         tabBarStyle: styles.tabBar,
         tabBarActiveTintColor: "#0A84FF",
         tabBarInactiveTintColor: "#8E8E93",
         tabBarLabelStyle: styles.tabBarLabel,
-        animation: "fade",
+        animation: "none",
+        freezeOnBlur: true,
+        sceneStyle: {
+          backgroundColor: "#F2F2F7",
+        },
       }}
     >
       <Tabs.Screen
@@ -68,9 +73,10 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="profile"
+        name="profile/index"
         options={{
           title: "Profile",
+          tabBarLabel: "Profile",
           tabBarIcon: ({ color, focused }) => (
             <Ionicons
               name={focused ? "person" : "person-outline"}

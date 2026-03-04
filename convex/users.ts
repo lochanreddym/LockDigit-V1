@@ -66,6 +66,47 @@ export const getByPhone = query({
   },
 });
 
+export const getPhoneAuthStatus = query({
+  args: { phone: v.string(), deviceId: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    const phone = args.phone.trim();
+    if (!phone) {
+      return {
+        exists: false,
+        hasPin: false,
+        pinLength: 4,
+        isBoundToCurrentDevice: false,
+      };
+    }
+
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_phone", (q) => q.eq("phone", phone))
+      .first();
+
+    if (!user) {
+      return {
+        exists: false,
+        hasPin: false,
+        pinLength: 4,
+        isBoundToCurrentDevice: false,
+      };
+    }
+
+    const isBoundToCurrentDevice =
+      Boolean(args.deviceId) &&
+      Boolean(user.deviceId) &&
+      args.deviceId === user.deviceId;
+
+    return {
+      exists: true,
+      hasPin: isPinConfigured(user),
+      pinLength: user.pinLength ?? 4,
+      isBoundToCurrentDevice,
+    };
+  },
+});
+
 export const getMe = query({
   args: {},
   handler: async (ctx) => {
@@ -148,6 +189,201 @@ export const verifyPin = mutation({
       maxAttempts: MAX_PIN_ATTEMPTS,
       remainingAttempts: Math.max(0, MAX_PIN_ATTEMPTS - attempts),
       lockedUntil,
+    };
+  },
+});
+
+export const verifyPinWithPhone = mutation({
+  args: {
+    phone: v.string(),
+    pin: v.string(),
+    deviceId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const identity = await requireIdentity(ctx);
+    const phone = args.phone.trim();
+
+    if (!phone) {
+      return {
+        success: false,
+        locked: false,
+        remainingAttempts: MAX_PIN_ATTEMPTS,
+        attemptsMade: 0,
+        maxAttempts: MAX_PIN_ATTEMPTS,
+      };
+    }
+
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_phone", (q) => q.eq("phone", phone))
+      .first();
+
+    if (!user || !user.pinHash || !user.pinSalt) {
+      return {
+        success: false,
+        locked: false,
+        deviceMismatch: false,
+        remainingAttempts: MAX_PIN_ATTEMPTS,
+        attemptsMade: 0,
+        maxAttempts: MAX_PIN_ATTEMPTS,
+      };
+    }
+
+    if (!user.deviceId || user.deviceId !== args.deviceId) {
+      return {
+        success: false,
+        locked: false,
+        deviceMismatch: true,
+        remainingAttempts: MAX_PIN_ATTEMPTS,
+        attemptsMade: 0,
+        maxAttempts: MAX_PIN_ATTEMPTS,
+      };
+    }
+
+    const now = Date.now();
+    if (user.pinLockedUntil && user.pinLockedUntil > now) {
+      return {
+        success: false,
+        locked: true,
+        deviceMismatch: false,
+        remainingAttempts: 0,
+        attemptsMade: user.pinFailedAttempts ?? MAX_PIN_ATTEMPTS,
+        maxAttempts: MAX_PIN_ATTEMPTS,
+        lockedUntil: user.pinLockedUntil,
+      };
+    }
+
+    const linkedBySubject = await ctx.db
+      .query("users")
+      .withIndex("by_auth_subject", (q) =>
+        q.eq("authSubject", identity.tokenIdentifier)
+      )
+      .first();
+
+    if (linkedBySubject && linkedBySubject._id !== user._id) {
+      throw new Error("Session already linked to another account");
+    }
+
+    const computedHash = sha256Hex(`${user.pinSalt}:${args.pin}`);
+    if (computedHash === user.pinHash) {
+      const patch: Partial<Doc<"users">> = {
+        authSubject: identity.tokenIdentifier,
+        pinFailedAttempts: 0,
+        pinLockedUntil: undefined,
+      };
+      if (!user.deviceId && args.deviceId) {
+        patch.deviceId = args.deviceId;
+      }
+      await ctx.db.patch(user._id, patch);
+
+      await writeAuditLog(ctx, {
+        userId: user._id,
+        actorAuthSubject: identity.tokenIdentifier,
+        action: "user.pin.phone_login.success",
+        targetType: "user",
+        targetId: user._id,
+      });
+
+      return {
+        success: true,
+        locked: false,
+        deviceMismatch: false,
+        remainingAttempts: MAX_PIN_ATTEMPTS,
+        attemptsMade: 0,
+        maxAttempts: MAX_PIN_ATTEMPTS,
+        userId: user._id,
+        pinLength: user.pinLength ?? 4,
+        phone: user.phone ?? phone,
+      };
+    }
+
+    const attempts = (user.pinFailedAttempts ?? 0) + 1;
+    const locked = attempts >= MAX_PIN_ATTEMPTS;
+    const lockedUntil = locked ? now + PIN_LOCK_WINDOW_MS : undefined;
+
+    await ctx.db.patch(user._id, {
+      pinFailedAttempts: attempts,
+      pinLockedUntil: lockedUntil,
+    });
+
+    await writeAuditLog(ctx, {
+      userId: user._id,
+      actorAuthSubject: identity.tokenIdentifier,
+      action: "user.pin.phone_login.failed",
+      targetType: "user",
+      targetId: user._id,
+      details: { attempts, locked },
+    });
+
+    return {
+      success: false,
+      locked,
+      deviceMismatch: false,
+      attemptsMade: attempts,
+      maxAttempts: MAX_PIN_ATTEMPTS,
+      remainingAttempts: Math.max(0, MAX_PIN_ATTEMPTS - attempts),
+      lockedUntil,
+    };
+  },
+});
+
+export const completeTrustedDeviceLogin = mutation({
+  args: {
+    phone: v.string(),
+    deviceId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const identity = await requireIdentity(ctx);
+    const phone = args.phone.trim();
+
+    if (!phone) {
+      return { success: false, requiresOtpSetup: true };
+    }
+
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_phone", (q) => q.eq("phone", phone))
+      .first();
+
+    if (!user || !user.pinHash || !user.pinSalt) {
+      return { success: false, requiresOtpSetup: true };
+    }
+
+    if (!user.deviceId || user.deviceId !== args.deviceId) {
+      return { success: false, requiresOtpSetup: true };
+    }
+
+    const linkedBySubject = await ctx.db
+      .query("users")
+      .withIndex("by_auth_subject", (q) =>
+        q.eq("authSubject", identity.tokenIdentifier)
+      )
+      .first();
+
+    if (linkedBySubject && linkedBySubject._id !== user._id) {
+      throw new Error("Session already linked to another account");
+    }
+
+    await ctx.db.patch(user._id, {
+      authSubject: identity.tokenIdentifier,
+      pinFailedAttempts: 0,
+      pinLockedUntil: undefined,
+    });
+
+    await writeAuditLog(ctx, {
+      userId: user._id,
+      actorAuthSubject: identity.tokenIdentifier,
+      action: "user.biometric.phone_login.success",
+      targetType: "user",
+      targetId: user._id,
+    });
+
+    return {
+      success: true,
+      userId: user._id,
+      pinLength: user.pinLength ?? 4,
+      phone: user.phone ?? phone,
+      requiresOtpSetup: false,
     };
   },
 });
@@ -240,23 +476,31 @@ export const bootstrapSession = mutation({
         .first();
 
       if (existingByPhone) {
-        if (
+        const relinkedFromDifferentSubject = Boolean(
           existingByPhone.authSubject &&
-          existingByPhone.authSubject !== authSubject
-        ) {
-          throw new Error("Phone number is already linked to another account");
-        }
+            existingByPhone.authSubject !== authSubject
+        );
 
         await ctx.db.patch(existingByPhone._id, {
           authSubject,
           email: existingByPhone.email ?? args.email,
-          deviceId: existingByPhone.deviceId ?? args.deviceId,
+          deviceId: args.deviceId ?? existingByPhone.deviceId,
           name:
             existingByPhone.name && existingByPhone.name !== "User"
               ? existingByPhone.name
               : args.name ?? existingByPhone.name,
           phoneVerified: true,
         });
+
+        if (relinkedFromDifferentSubject) {
+          await writeAuditLog(ctx, {
+            userId: existingByPhone._id,
+            actorAuthSubject: authSubject,
+            action: "user.bootstrap.relinked_phone_subject",
+            targetType: "user",
+            targetId: existingByPhone._id,
+          });
+        }
 
         return {
           userId: existingByPhone._id,

@@ -11,6 +11,7 @@ export default function AppLayout() {
       }}
     >
       <Stack.Screen name="(tabs)" />
+      <Stack.Screen name="profile" options={{ headerShown: false }} />
       <Stack.Screen
         name="scan-to-pay"
         options={{ animation: "slide_from_bottom" }}
@@ -24,6 +25,7 @@ export default function AppLayout() {
       <Stack.Screen name="document-categories/[category]" />
       <Stack.Screen name="document-categories/select-state" />
       <Stack.Screen name="payment-success" />
+      <Stack.Screen name="transaction/[id]" />
       <Stack.Screen name="add-credential" />
       <Stack.Screen name="my-wallet" />
       <Stack.Screen name="add-bank-account" />

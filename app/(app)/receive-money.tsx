@@ -38,18 +38,18 @@ type BankAccount = {
 
 export default function ReceiveMoneyScreen() {
   const router = useRouter();
-  const firebaseSessionReady = useFirebaseSessionReady();
+  const { hasUser: firebaseHasUser } = useFirebaseSessionReady();
   const { phone } = useAuthStore();
   const qrRefs = useRef<Record<string, any>>({});
   const [activeIndex, setActiveIndex] = useState(0);
 
   const user = useQuery(
     api.users.getMe,
-    firebaseSessionReady ? {} : "skip"
+    firebaseHasUser ? {} : "skip"
   );
   const bankAccounts = useQuery(
     api.payments.listBankAccounts,
-    firebaseSessionReady ? {} : "skip"
+    firebaseHasUser ? {} : "skip"
   );
 
   const accounts = useMemo(() => {

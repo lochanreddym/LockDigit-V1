@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   TextInput,
+  ScrollView,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -29,6 +30,13 @@ const HIGH_AMOUNT_THRESHOLD = 50000;
 const MAX_APP_PIN_ATTEMPTS = 5;
 const createIdempotencyKey = (prefix: string) =>
   `${prefix}:${Date.now()}:${Math.random().toString(36).slice(2, 12)}`;
+
+type PaymentAccount = {
+  _id: Id<"bankAccounts">;
+  bankName: string;
+  accountLast4: string;
+  type?: "bank" | "card";
+};
 
 export default function SendToMobileAmountScreen() {
   const router = useRouter();
@@ -50,7 +58,8 @@ export default function SendToMobileAmountScreen() {
   const [pinError, setPinError] = useState("");
   const [pinAttempts, setPinAttempts] = useState(0);
   const [faceIdAvailable, setFaceIdAvailable] = useState(false);
-  const [hasCard, setHasCard] = useState(false);
+  const [sourceAccountId, setSourceAccountId] = useState<Id<"bankAccounts"> | null>(null);
+  const [recipientNickname, setRecipientNickname] = useState("");
 
   const bankAccounts = useQuery(
     api.payments.listBankAccounts,
@@ -60,6 +69,21 @@ export default function SendToMobileAmountScreen() {
   const createPaymentIntent = useAction(api.payments.createPaymentIntent);
   const waitForTerminalStatus = useAction(api.payments.waitForTerminalStatus);
   const verifyUserPin = useMutation(api.users.verifyPin);
+
+  const paymentAccounts = useMemo(
+    () => (bankAccounts ?? []) as PaymentAccount[],
+    [bankAccounts]
+  );
+
+  const selectedAccount = useMemo(
+    () =>
+      sourceAccountId
+        ? paymentAccounts.find((account) => account._id === sourceAccountId) || null
+        : null,
+    [paymentAccounts, sourceAccountId]
+  );
+
+  const recipientDisplayName = recipientNickname.trim() || recipientName;
 
   useEffect(() => {
     (async () => {
@@ -75,10 +99,10 @@ export default function SendToMobileAmountScreen() {
   }, []);
 
   useEffect(() => {
-    if (bankAccounts) {
-      setHasCard(bankAccounts.some((a: { type?: string }) => a.type === "card"));
+    if (!sourceAccountId && paymentAccounts.length > 0) {
+      setSourceAccountId(paymentAccounts[0]._id);
     }
-  }, [bankAccounts]);
+  }, [paymentAccounts, sourceAccountId]);
 
   const handleAmountChange = (text: string) => {
     const digits = text.replace(/[^0-9]/g, "").replace(/^0+/, "");
@@ -98,12 +122,27 @@ export default function SendToMobileAmountScreen() {
       return;
     }
 
+    if (!selectedAccount) {
+      Alert.alert(
+        "Select Payment Account",
+        "Choose which saved account you want to use for this transfer.",
+        [
+          { text: "Not Now", style: "cancel" },
+          {
+            text: "Add Account",
+            onPress: () => router.push("/(app)/add-bank-account"),
+          },
+        ]
+      );
+      return;
+    }
+
     const proceed = () => setStep("confirm");
 
     if (parsedAmount >= HIGH_AMOUNT_THRESHOLD) {
       Alert.alert(
         "Large Transfer",
-        `You're about to send $${(parsedAmount / 100).toFixed(2)} to ${recipientName}. Continue?`,
+        `You're about to send $${(parsedAmount / 100).toFixed(2)} to ${recipientDisplayName}. Continue?`,
         [
           { text: "Cancel", style: "cancel" },
           { text: "Yes, Proceed", onPress: proceed },
@@ -183,16 +222,17 @@ export default function SendToMobileAmountScreen() {
   };
 
   const executePayment = async () => {
-    if (!convexUserId) return;
+    if (!convexUserId || !selectedAccount) return;
 
     setProcessing(true);
     try {
+      const sourceLabel = `${selectedAccount.bankName} •••• ${selectedAccount.accountLast4}`;
       const { clientSecret, paymentIntentId } =
         await createPaymentIntent({
           amount: parsedAmount,
           currency: "usd",
-          description: `Transfer to ${recipientName}`,
-          merchantName: recipientName,
+          description: `Transfer to ${recipientDisplayName} from ${sourceLabel}`,
+          merchantName: recipientDisplayName,
           recipientPhone,
           idempotencyKey: createIdempotencyKey("send_to_mobile"),
         });
@@ -264,16 +304,25 @@ export default function SendToMobileAmountScreen() {
             behavior={Platform.OS === "ios" ? "padding" : "height"}
             className="flex-1"
           >
-            <View className="flex-1 px-5 justify-center">
-              <View className="items-center mb-6">
+            <ScrollView
+              className="flex-1"
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 40 }}
+            >
+              <View className="items-center mt-4 mb-6">
                 <View className="w-20 h-20 rounded-full bg-purple-500/10 items-center justify-center mb-3">
                   <Text className="text-purple-600 text-2xl font-bold">
-                    {getInitials(recipientName)}
+                    {getInitials(recipientDisplayName)}
                   </Text>
                 </View>
                 <Text className="text-ios-dark text-lg font-bold">
-                  {recipientName}
+                  {recipientDisplayName}
                 </Text>
+                {recipientNickname.trim().length > 0 && (
+                  <Text className="text-ios-grey4 text-xs mt-0.5">
+                    Actual contact: {recipientName}
+                  </Text>
+                )}
                 <Text className="text-ios-grey4 text-sm mt-0.5">
                   {recipientPhone}
                 </Text>
@@ -305,6 +354,82 @@ export default function SendToMobileAmountScreen() {
                 </View>
               </View>
 
+              <View
+                className="bg-white rounded-3xl border border-ios-border p-5 mb-4"
+                style={styles.cardShadow}
+              >
+                <Text className="text-ios-grey4 text-sm mb-3">
+                  Select payment account
+                </Text>
+                {paymentAccounts.length === 0 ? (
+                  <TouchableOpacity
+                    onPress={() => router.push("/(app)/add-bank-account")}
+                    activeOpacity={0.7}
+                    className="flex-row items-center justify-between bg-ios-bg rounded-2xl border border-ios-border px-4 py-3"
+                  >
+                    <Text className="text-ios-dark font-medium">
+                      Add account to continue
+                    </Text>
+                    <Ionicons name="add-circle-outline" size={20} color="#7C3AED" />
+                  </TouchableOpacity>
+                ) : (
+                  paymentAccounts.map((account) => {
+                    const isSelected = sourceAccountId === account._id;
+                    return (
+                      <TouchableOpacity
+                        key={account._id}
+                        onPress={() => setSourceAccountId(account._id)}
+                        activeOpacity={0.75}
+                        className="flex-row items-center justify-between rounded-2xl px-4 py-3 mb-2"
+                        style={{
+                          borderWidth: 1,
+                          borderColor: isSelected ? "#7C3AED" : "#E5E7EB",
+                          backgroundColor: isSelected ? "#F5F3FF" : "#FFFFFF",
+                        }}
+                      >
+                        <View className="flex-1 pr-3">
+                          <Text className="text-ios-dark font-semibold text-[15px]">
+                            {account.bankName}
+                          </Text>
+                          <Text className="text-ios-grey4 text-xs mt-0.5">
+                            {account.type === "card" ? "Card" : "Bank"} •••• {account.accountLast4}
+                          </Text>
+                        </View>
+                        <Ionicons
+                          name={
+                            isSelected
+                              ? "radio-button-on-outline"
+                              : "radio-button-off-outline"
+                          }
+                          size={20}
+                          color={isSelected ? "#7C3AED" : "#C7C7CC"}
+                        />
+                      </TouchableOpacity>
+                    );
+                  })
+                )}
+              </View>
+
+              <View
+                className="bg-white rounded-3xl border border-ios-border p-5 mb-6"
+                style={styles.cardShadow}
+              >
+                <Text className="text-ios-grey4 text-sm mb-2">
+                  Nickname (optional)
+                </Text>
+                <TextInput
+                  value={recipientNickname}
+                  onChangeText={setRecipientNickname}
+                  placeholder="e.g. Brother, Mom, Landlord"
+                  placeholderTextColor="#A1A1AA"
+                  maxLength={32}
+                  className="bg-ios-bg border border-ios-border rounded-2xl px-4 py-3 text-ios-dark text-[15px]"
+                />
+                <Text className="text-ios-grey4 text-xs mt-2">
+                  This name is shown in your recent transfers for faster payments.
+                </Text>
+              </View>
+
               <GlassButton
                 title={`Continue — $${formattedAmount}`}
                 onPress={handleContinue}
@@ -312,7 +437,7 @@ export default function SendToMobileAmountScreen() {
                 fullWidth
                 icon={<Ionicons name="arrow-forward" size={20} color="#FFFFFF" />}
               />
-            </View>
+            </ScrollView>
           </KeyboardAvoidingView>
         </SafeAreaView>
       </View>
@@ -350,14 +475,26 @@ export default function SendToMobileAmountScreen() {
             <View className="items-center py-4">
               <Text className="text-ios-grey4 text-sm">Sending to</Text>
               <Text className="text-ios-dark text-xl font-bold mt-1">
-                {recipientName}
+                {recipientDisplayName}
               </Text>
+              {recipientNickname.trim().length > 0 && (
+                <Text className="text-ios-grey4 text-xs mt-1">
+                  Contact: {recipientName}
+                </Text>
+              )}
               <Text className="text-ios-grey4 text-sm mt-1">
                 {recipientPhone}
               </Text>
               <Text className="text-ios-dark text-4xl font-bold mt-4">
                 {formatCurrency(parsedAmount)}
               </Text>
+              {selectedAccount && (
+                <View className="mt-4 bg-ios-bg rounded-xl px-4 py-2 border border-ios-border">
+                  <Text className="text-ios-grey4 text-xs text-center">
+                    From {selectedAccount.bankName} •••• {selectedAccount.accountLast4}
+                  </Text>
+                </View>
+              )}
             </View>
           </View>
 
@@ -437,7 +574,7 @@ export default function SendToMobileAmountScreen() {
                   <View key={ri} className="flex-row gap-4 mb-3">
                     {row.map((key) => {
                       if (key === "face") {
-                        if (faceIdAvailable && hasCard) {
+                        if (faceIdAvailable && selectedAccount?.type === "card") {
                           return (
                             <TouchableOpacity
                               key="face"
@@ -498,7 +635,7 @@ export default function SendToMobileAmountScreen() {
               )}
             </View>
 
-            {faceIdAvailable && hasCard && (
+            {faceIdAvailable && selectedAccount?.type === "card" && (
               <Text className="text-ios-grey4 text-xs text-center mt-1">
                 Face ID available for card payments
               </Text>

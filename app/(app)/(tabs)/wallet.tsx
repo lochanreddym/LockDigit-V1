@@ -41,7 +41,7 @@ const { width: SCREEN_WIDTH } = Dimensions.get("window");
 export default function WalletScreen() {
   const router = useRouter();
   const convex = useConvex();
-  const firebaseSessionReady = useFirebaseSessionReady();
+  const { hasUser: firebaseHasUser } = useFirebaseSessionReady();
   const params = useLocalSearchParams<{
     addDocType?: string;
     addDocLabel?: string;
@@ -60,7 +60,7 @@ export default function WalletScreen() {
 
   const documents = useQuery(
     api.documents.listMine,
-    firebaseSessionReady ? { _refreshHint: refreshHint } : "skip"
+    firebaseHasUser ? { _refreshHint: refreshHint } : "skip"
   );
   const generateUploadUrl = useMutation(api.documents.generateUploadUrl);
   const createDocument = useMutation(api.documents.create);

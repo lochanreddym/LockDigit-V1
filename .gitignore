@@ -37,3 +37,6 @@ yarn-error.*
 
 # Convex
 .convex/
+
+# Codex run logs
+.codex-run-logs/

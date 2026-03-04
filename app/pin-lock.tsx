@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -6,6 +6,7 @@ import {
   Alert,
   Animated,
   StyleSheet,
+  Platform,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -15,6 +16,7 @@ import { api } from "@/convex/_generated/api";
 import { useAuthStore } from "@/hooks/useAuth";
 import * as SecureStoreHelper from "@/lib/secure-store";
 import { useFirebaseSessionReady } from "@/hooks/useFirebaseSessionReady";
+import * as LocalAuthentication from "expo-local-authentication";
 
 const MAX_APP_PIN_ATTEMPTS = 5;
 
@@ -23,12 +25,33 @@ export default function PinLockScreen() {
   const [pin, setPin] = useState("");
   const [attempts, setAttempts] = useState(0);
   const [pinError, setPinError] = useState("");
+  const [redirectingToLogin, setRedirectingToLogin] = useState(false);
+  const [biometricAvailable, setBiometricAvailable] = useState(false);
+  const [biometricPrompting, setBiometricPrompting] = useState(false);
   const shakeAnim = useRef(new Animated.Value(0)).current;
+  const biometricAttemptedRef = useRef(false);
   const { setPinVerified } = useAuthStore();
-  const firebaseSessionReady = useFirebaseSessionReady();
-  const user = useQuery(api.users.getMeForPin, firebaseSessionReady ? {} : "skip");
+  const { ready: firebaseReady, hasUser: firebaseHasUser } = useFirebaseSessionReady();
+  const user = useQuery(api.users.getMeForPin, firebaseReady && firebaseHasUser ? {} : "skip");
   const verifyPin = useMutation(api.users.verifyPin);
   const pinLength = user?.pinLength ?? 6;
+  const biometricLabel = Platform.OS === "ios" ? "Face ID" : "Biometrics";
+  const biometricActionLabel = Platform.OS === "ios" ? "Use Face ID" : "Use Biometrics";
+
+  useEffect(() => {
+    if (!firebaseReady) return;
+    if (firebaseHasUser) return;
+    if (redirectingToLogin) return;
+
+    setRedirectingToLogin(true);
+    void (async () => {
+      try {
+        await SecureStoreHelper.clearAll();
+      } finally {
+        router.replace("/(auth)/login");
+      }
+    })();
+  }, [firebaseReady, firebaseHasUser, redirectingToLogin, router]);
 
   useEffect(() => {
     if (user?.pinLockedUntil && user.pinLockedUntil > Date.now()) {
@@ -50,6 +73,64 @@ export default function PinLockScreen() {
       );
     }
   }, [user?.pinLockedUntil, router]);
+
+  const unlockWithBiometrics = useCallback(async () => {
+    if (biometricPrompting) return;
+    setPinError("");
+    setBiometricPrompting(true);
+    try {
+      const result = await LocalAuthentication.authenticateAsync({
+        promptMessage:
+          Platform.OS === "ios"
+            ? "Unlock LockDigit with Face ID"
+            : "Unlock LockDigit with biometrics",
+        disableDeviceFallback: true,
+        fallbackLabel: "Use PIN",
+        cancelLabel: "Use PIN",
+      });
+      if (result.success) {
+        setPinVerified(true);
+        router.replace("/(app)/(tabs)/home");
+      }
+    } catch (error) {
+      if (__DEV__) {
+        console.warn("Biometric unlock failed:", error);
+      }
+    } finally {
+      setBiometricPrompting(false);
+    }
+  }, [biometricPrompting, router, setPinVerified]);
+
+  useEffect(() => {
+    let active = true;
+    if (!firebaseReady || !firebaseHasUser) return;
+    if (user === undefined || !user?.hasPin) return;
+
+    (async () => {
+      const [enabled, hasHardware, isEnrolled] = await Promise.all([
+        SecureStoreHelper.isFaceIdEnabled(),
+        LocalAuthentication.hasHardwareAsync(),
+        LocalAuthentication.isEnrolledAsync(),
+      ]);
+
+      const available = enabled && hasHardware && isEnrolled;
+      if (!active) return;
+      setBiometricAvailable(available);
+
+      if (!available || biometricAttemptedRef.current) return;
+      biometricAttemptedRef.current = true;
+      await unlockWithBiometrics();
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [
+    firebaseReady,
+    firebaseHasUser,
+    user,
+    unlockWithBiometrics,
+  ]);
 
   const shake = () => {
     Animated.sequence([
@@ -141,7 +222,29 @@ export default function PinLockScreen() {
     setPin(pin.slice(0, -1));
   };
 
-  if (!firebaseSessionReady || user === undefined) {
+  // If Firebase hasn't emitted its first auth state yet, we can't know whether
+  // Convex auth will work, so show a loading state.
+  if (!firebaseReady) {
+    return (
+      <View className="flex-1 bg-ios-bg items-center justify-center">
+        <Text className="text-ios-grey4">Loading secure session...</Text>
+      </View>
+    );
+  }
+
+  // If there's no Firebase user, Convex queries are skipped. Previously this
+  // fell into the loading state forever because `user` stayed `undefined`.
+  if (!firebaseHasUser) {
+    return (
+      <View className="flex-1 bg-ios-bg items-center justify-center px-6">
+        <Text className="text-ios-grey4 text-center">
+          Session expired. Redirecting to login...
+        </Text>
+      </View>
+    );
+  }
+
+  if (user === undefined) {
     return (
       <View className="flex-1 bg-ios-bg items-center justify-center">
         <Text className="text-ios-grey4">Loading secure session...</Text>
@@ -156,7 +259,10 @@ export default function PinLockScreen() {
           Session expired. Please verify with OTP again.
         </Text>
         <TouchableOpacity
-          onPress={() => router.replace("/(auth)/login")}
+          onPress={async () => {
+            await SecureStoreHelper.clearAll();
+            router.replace("/(auth)/login");
+          }}
           className="mt-4"
         >
           <Text className="text-primary text-sm font-medium">Go to Login</Text>
@@ -245,6 +351,20 @@ export default function PinLockScreen() {
               </View>
             ))}
           </View>
+
+          {biometricAvailable ? (
+            <TouchableOpacity
+              onPress={() => void unlockWithBiometrics()}
+              className="items-center mt-2"
+              disabled={biometricPrompting}
+            >
+              <Text className="text-primary text-sm font-medium">
+                {biometricPrompting
+                  ? `${biometricLabel} in progress...`
+                  : biometricActionLabel}
+              </Text>
+            </TouchableOpacity>
+          ) : null}
 
           {/* Forgot PIN */}
           <TouchableOpacity

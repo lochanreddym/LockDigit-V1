@@ -10,6 +10,8 @@ interface TransactionItemProps {
   merchantName?: string;
   status: "pending" | "completed" | "failed";
   createdAt: number;
+  senderName?: string;
+  transactionId?: string;
 }
 
 const typeIcons: Record<string, keyof typeof Ionicons.glyphMap> = {
@@ -26,6 +28,12 @@ const statusColors: Record<string, string> = {
   failed: "#FF3B30",
 };
 
+const statusLabels: Record<string, string> = {
+  pending: "Pending",
+  completed: "Completed",
+  failed: "Failed",
+};
+
 export function TransactionItem({
   type,
   amount,
@@ -33,7 +41,11 @@ export function TransactionItem({
   merchantName,
   status,
   createdAt,
+  senderName,
+  transactionId,
 }: TransactionItemProps) {
+  const sender = senderName || "User";
+
   return (
     <View className="flex-row items-center py-3 border-b border-ios-border">
       <View
@@ -49,7 +61,10 @@ export function TransactionItem({
 
       <View className="flex-1">
         <Text className="text-ios-dark text-sm font-medium" numberOfLines={1}>
-          {merchantName || description}
+          {sender}
+        </Text>
+        <Text className="text-ios-grey4 text-xs mt-0.5" numberOfLines={1}>
+          {transactionId ? `Transaction ID: ${transactionId}` : merchantName || description}
         </Text>
         <View className="flex-row items-center mt-0.5">
           <View
@@ -57,10 +72,10 @@ export function TransactionItem({
             style={{ backgroundColor: statusColors[status] }}
           />
           <Text
-            className="text-xs capitalize"
+            className="text-xs"
             style={{ color: statusColors[status] }}
           >
-            {status}
+            {statusLabels[status] ?? "Pending"}
           </Text>
           <View className="w-1 h-1 rounded-full bg-ios-grey3 mx-2" />
           <Text className="text-ios-grey4 text-xs">{formatDate(createdAt)}</Text>

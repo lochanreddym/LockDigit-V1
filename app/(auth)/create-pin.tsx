@@ -9,7 +9,7 @@ import {
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { useMutation } from "convex/react";
+import { useConvex, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { createPin, isPinValid } from "@/lib/pin-manager";
@@ -17,11 +17,13 @@ import { getOrCreateDeviceFingerprint } from "@/lib/device-binding";
 import * as SecureStoreHelper from "@/lib/secure-store";
 import { useAuthStore } from "@/hooks/useAuth";
 import { LinearGradient } from "expo-linear-gradient";
+import { getFirebaseToken, ensureFirebaseSession } from "@/lib/firebase";
 
 type PinLength = 4 | 6;
 
 export default function CreatePinScreen() {
   const router = useRouter();
+  const convex = useConvex();
   const { phone, name, resetPin } = useLocalSearchParams<{
     phone: string;
     name: string;
@@ -65,6 +67,15 @@ export default function CreatePinScreen() {
         useNativeDriver: true,
       }),
     ]).start();
+  };
+
+  const waitForFirebaseToken = async () => {
+    for (let i = 0; i < 10; i += 1) {
+      const token = await getFirebaseToken();
+      if (token) return token;
+      await new Promise((resolve) => setTimeout(resolve, 150));
+    }
+    return null;
   };
 
   const handleDigitPress = (digit: string) => {
@@ -116,15 +127,63 @@ export default function CreatePinScreen() {
 
   const handleCreatePin = async (finalPin: string) => {
     try {
+      let firebaseToken = await waitForFirebaseToken();
+      if (!firebaseToken) {
+        try {
+          await ensureFirebaseSession();
+          firebaseToken = await waitForFirebaseToken();
+        } catch {
+          // Ignore and fall back to session-expired handling below.
+        }
+      }
+      if (!firebaseToken) {
+        Alert.alert(
+          "Session Expired",
+          "Your authentication session is missing. Please verify with OTP again.",
+          [
+            {
+              text: "Go to Login",
+              onPress: async () => {
+                await SecureStoreHelper.clearAll();
+                router.replace("/(auth)/login");
+              },
+            },
+          ]
+        );
+        setPin("");
+        setConfirmPin("");
+        setStep("enter");
+        return;
+      }
+
       const { hash, salt } = await createPin(finalPin);
       await SecureStoreHelper.storePinLength(String(pinLength));
 
       const deviceId = await getOrCreateDeviceFingerprint();
-      const session = await bootstrapSession({
-        name: name || "User",
-        phone: phone || undefined,
-        deviceId,
-      });
+      let session;
+      try {
+        session = await bootstrapSession({
+          name: name || "User",
+          phone: phone || undefined,
+          deviceId,
+        });
+      } catch (bootstrapError: any) {
+        // Convex can still be re-authenticating right after Firebase session changes.
+        // Retry once after a short delay before treating it as an expired session.
+        if (
+          typeof bootstrapError?.message === "string" &&
+          /unauthorized/i.test(bootstrapError.message)
+        ) {
+          await new Promise((resolve) => setTimeout(resolve, 800));
+          session = await bootstrapSession({
+            name: name || "User",
+            phone: phone || undefined,
+            deviceId,
+          });
+        } else {
+          throw bootstrapError;
+        }
+      }
 
       try {
         await updatePin({
@@ -154,6 +213,68 @@ export default function CreatePinScreen() {
       router.replace("/(app)/(tabs)/home");
     } catch (error: any) {
       console.error("PIN creation failed:", error);
+      if (
+        typeof error?.message === "string" &&
+        /(phone number is already linked to another account|session already linked to another account)/i.test(error.message) &&
+        typeof phone === "string" &&
+        phone.length > 0
+      ) {
+        try {
+          const deviceId = await getOrCreateDeviceFingerprint();
+          const status = await convex.query(api.users.getPhoneAuthStatus, {
+            phone,
+            deviceId,
+          });
+          if (
+            status.exists &&
+            status.hasPin &&
+            status.isBoundToCurrentDevice
+          ) {
+            Alert.alert(
+              "Account Already Exists",
+              "This number already has a PIN. Please enter your existing PIN to continue.",
+              [
+                {
+                  text: "Enter PIN",
+                  onPress: () =>
+                    router.replace({
+                      pathname: "/(auth)/verify-pin",
+                      params: {
+                        phone,
+                        pinLogin: "true",
+                        pinLength: String(status.pinLength ?? 4),
+                      },
+                    }),
+                },
+              ]
+            );
+            return;
+          }
+        } catch (statusError) {
+          if (__DEV__) {
+            console.warn("Failed to fetch phone auth status:", statusError);
+          }
+        }
+      }
+      if (typeof error?.message === "string" && /unauthorized/i.test(error.message)) {
+        Alert.alert(
+          "Session Expired",
+          "Please verify your phone again to continue setup.",
+          [
+            {
+              text: "Go to Login",
+              onPress: async () => {
+                await SecureStoreHelper.clearAll();
+                router.replace("/(auth)/login");
+              },
+            },
+          ]
+        );
+        setPin("");
+        setConfirmPin("");
+        setStep("enter");
+        return;
+      }
       Alert.alert(
         "Setup Failed",
         error?.message || "Failed to create PIN. Please try again."

@@ -16,6 +16,9 @@ import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Constants from "expo-constants";
+import { useConvex } from "convex/react";
+import { api } from "@/convex/_generated/api";
+import { getOrCreateDeviceFingerprint } from "@/lib/device-binding";
 import { sendOTP } from "@/lib/firebase";
 
 const isIOSSimulator =
@@ -32,11 +35,16 @@ const SUPPORTED_COUNTRY_CODES = ["+1", "+91"] as const;
 
 export default function LoginScreen() {
   const router = useRouter();
-  const { resetPin } = useLocalSearchParams<{ resetPin?: string }>();
+  const convex = useConvex();
+  const { resetPin, forceRealOtp } = useLocalSearchParams<{
+    resetPin?: string;
+    forceRealOtp?: string;
+  }>();
   const [phone, setPhone] = useState("");
   const [countryCode, setCountryCode] = useState("+1");
   const [loading, setLoading] = useState(false);
   const isResetPin = resetPin === "true";
+  const allowSimulatorBypass = isIOSSimulator && forceRealOtp !== "true";
 
   const maxDigits = COUNTRY_MAX_DIGITS[countryCode] ?? DEFAULT_MAX_DIGITS;
 
@@ -74,8 +82,46 @@ export default function LoginScreen() {
     setLoading(true);
     try {
       const fullPhone = `${countryCode}${phone}`;
+      const deviceId = await getOrCreateDeviceFingerprint();
+      if (!isResetPin) {
+        try {
+          const status = await convex.query(api.users.getPhoneAuthStatus, {
+            phone: fullPhone,
+            deviceId,
+          });
+          if (
+            status.exists &&
+            status.hasPin &&
+            status.isBoundToCurrentDevice
+          ) {
+            router.push({
+              pathname: "/(auth)/verify-pin",
+              params: {
+                phone: fullPhone,
+                pinLogin: "true",
+                pinLength: String(status.pinLength ?? 4),
+              },
+            });
+            setLoading(false);
+            return;
+          }
+        } catch (lookupError) {
+          if (__DEV__) {
+            console.warn("Phone auth status lookup failed:", lookupError);
+          }
+        }
+      }
 
-      if (isIOSSimulator) {
+      if (isIOSSimulator && forceRealOtp === "true") {
+        Alert.alert(
+          "Use Real Device",
+          "iOS simulator phone verification is unavailable with the current Firebase iOS config. Run this flow on a physical iPhone, or replace GoogleService-Info.plist from Firebase Console and rebuild."
+        );
+        setLoading(false);
+        return;
+      }
+
+      if (allowSimulatorBypass) {
         router.push({
           pathname: "/(auth)/verify",
           params: {

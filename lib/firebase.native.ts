@@ -5,6 +5,16 @@
 import auth, { FirebaseAuthTypes } from "@react-native-firebase/auth";
 
 let confirmationResult: FirebaseAuthTypes.ConfirmationResult | null = null;
+const TOKEN_CACHE_TTL_MS = 30_000;
+let cachedToken: string | null = null;
+let cachedTokenUid: string | null = null;
+let cachedTokenAt = 0;
+
+function clearTokenCache() {
+  cachedToken = null;
+  cachedTokenUid = null;
+  cachedTokenAt = 0;
+}
 
 /**
  * Send OTP to the given phone number.
@@ -32,12 +42,68 @@ export async function verifyOTP(
 }
 
 /**
+ * Ensure there's an authenticated Firebase session.
+ * Used by simulator test flows that bypass real OTP verification.
+ */
+export async function ensureFirebaseSession(): Promise<FirebaseAuthTypes.User | null> {
+  if (auth().currentUser) return auth().currentUser;
+  const credential = await auth().signInAnonymously();
+  return credential.user ?? auth().currentUser;
+}
+
+/**
  * Get the current Firebase auth token for Convex authentication.
  */
 export async function getFirebaseToken(): Promise<string | null> {
+  const now = Date.now();
   const user = auth().currentUser;
-  if (!user) return null;
-  return await user.getIdToken();
+  if (!user) {
+    clearTokenCache();
+    return null;
+  }
+
+  if (
+    cachedToken &&
+    cachedTokenUid === user.uid &&
+    now - cachedTokenAt < TOKEN_CACHE_TTL_MS
+  ) {
+    return cachedToken;
+  }
+
+  try {
+    const token = await user.getIdToken();
+    cachedToken = token;
+    cachedTokenUid = user.uid;
+    cachedTokenAt = now;
+    return token;
+  } catch (error: any) {
+    const code = typeof error?.code === "string" ? error.code : "";
+    const message = typeof error?.message === "string" ? error.message : "";
+    const lowerMessage = message.toLowerCase();
+    const hasRecoverableTokenExpiryMessage =
+      lowerMessage.includes("token expired") ||
+      lowerMessage.includes("expired token");
+
+    // Fail-soft for transient auth/network refresh failures to keep UI responsive.
+    const isRecoverable =
+      code === "auth/network-request-failed" ||
+      code === "auth/user-token-expired" ||
+      code === "auth/internal-error" ||
+      lowerMessage.includes("network") ||
+      hasRecoverableTokenExpiryMessage;
+
+    if (isRecoverable) {
+      if (
+        cachedToken &&
+        cachedTokenUid === user.uid &&
+        now - cachedTokenAt < TOKEN_CACHE_TTL_MS
+      ) {
+        return cachedToken;
+      }
+      return null;
+    }
+    throw error;
+  }
 }
 
 /**
@@ -49,7 +115,11 @@ export async function signOutFirebase(): Promise<void> {
   // If there's no signed-in user (e.g. simulator test flows), treat as a no-op
   if (!user) return;
 
-  await auth().signOut();
+  try {
+    await auth().signOut();
+  } finally {
+    clearTokenCache();
+  }
 }
 
 /**
@@ -65,5 +135,10 @@ export function getCurrentUser(): FirebaseAuthTypes.User | null {
 export function subscribeAuthState(
   listener: (user: FirebaseAuthTypes.User | null) => void
 ): () => void {
-  return auth().onAuthStateChanged(listener);
+  return auth().onAuthStateChanged((user) => {
+    if (!user || user.uid !== cachedTokenUid) {
+      clearTokenCache();
+    }
+    listener(user);
+  });
 }

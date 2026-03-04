@@ -1,42 +1,51 @@
 import * as Application from "expo-application";
 import { Platform } from "react-native";
 import * as Crypto from "expo-crypto";
+import * as FileSystem from "expo-file-system/legacy";
 import { storeDeviceId, getDeviceId } from "./secure-store";
 
+const DEVICE_ID_FILE =
+  (FileSystem.documentDirectory ?? "") + "lockdigit-device-id.txt";
+
 /**
- * Get or generate a unique device fingerprint.
- * On Android, uses androidId.
- * On iOS, uses identifierForVendor.
- * Falls back to a generated UUID stored in secure storage.
+ * Get or generate an installation-scoped device fingerprint.
+ * The file-backed value resets on app reinstall, which lets us
+ * force OTP + PIN setup for fresh installs/new devices.
  */
 export async function getOrCreateDeviceFingerprint(): Promise<string> {
-  // Check if we already have a stored device ID
-  const storedId = await getDeviceId();
-  if (storedId) return storedId;
+  const installedDeviceId = await FileSystem.readAsStringAsync(DEVICE_ID_FILE).catch(
+    () => null
+  );
+  if (installedDeviceId) {
+    const secureStoreId = await getDeviceId();
+    if (secureStoreId !== installedDeviceId) {
+      await storeDeviceId(installedDeviceId);
+    }
+    return installedDeviceId;
+  }
 
-  let deviceId: string | null = null;
-
+  let entropy = `${Platform.OS}:${Date.now()}`;
   if (Platform.OS === "android") {
-    deviceId = Application.getAndroidId();
+    entropy = `${entropy}:${Application.getAndroidId() ?? "android"}`;
   } else if (Platform.OS === "ios") {
-    deviceId = await Application.getIosIdForVendorAsync();
+    const iosId = await Application.getIosIdForVendorAsync();
+    entropy = `${entropy}:${iosId ?? "ios"}`;
   }
 
-  // Fallback: generate a UUID
-  if (!deviceId) {
-    const randomBytes = await Crypto.getRandomBytesAsync(16);
-    deviceId = Array.from(randomBytes)
-      .map((b) => b.toString(16).padStart(2, "0"))
-      .join("");
-  }
+  const randomBytes = await Crypto.getRandomBytesAsync(16);
+  const randomHex = Array.from(randomBytes)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+  entropy = `${entropy}:${randomHex}`;
 
-  // Hash the device ID for privacy
+  // Hash the installation-scoped ID for privacy.
   const hashedId = await Crypto.digestStringAsync(
     Crypto.CryptoDigestAlgorithm.SHA256,
-    `lockdigit-device:${deviceId}`
+    `lockdigit-device:${entropy}`
   );
 
   await storeDeviceId(hashedId);
+  await FileSystem.writeAsStringAsync(DEVICE_ID_FILE, hashedId).catch(() => {});
   return hashedId;
 }
 

@@ -593,7 +593,7 @@ export const listMine = query({
       .query("transactions")
       .withIndex("by_user", (q) => q.eq("userId", user._id))
       .order("desc")
-      .take(50);
+      .collect();
   },
 });
 

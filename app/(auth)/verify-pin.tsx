@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   Animated,
   StyleSheet,
   ActivityIndicator,
+  Platform,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -15,29 +16,49 @@ import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useAuthStore } from "@/hooks/useAuth";
 import { useFirebaseSessionReady } from "@/hooks/useFirebaseSessionReady";
+import { getOrCreateDeviceFingerprint } from "@/lib/device-binding";
 import * as SecureStoreHelper from "@/lib/secure-store";
-import { getFirebaseToken } from "@/lib/firebase";
+import { ensureFirebaseSession, getFirebaseToken } from "@/lib/firebase";
+import * as LocalAuthentication from "expo-local-authentication";
 
 const MAX_PIN_ATTEMPTS = 5;
 
 export default function VerifyPinScreen() {
   const router = useRouter();
-  const { phone } = useLocalSearchParams<{ phone: string }>();
-  const firebaseSessionReady = useFirebaseSessionReady();
+  const { phone, pinLogin, pinLength: pinLengthParam } = useLocalSearchParams<{
+    phone: string;
+    pinLogin?: string;
+    pinLength?: string;
+  }>();
+  const { ready: firebaseReady, hasUser: firebaseHasUser } = useFirebaseSessionReady();
   const { setAuthenticated, setPinCreated } = useAuthStore();
+  const phoneValue = typeof phone === "string" ? phone : "";
+  const isPhonePinLogin = pinLogin === "true";
+  const phonePinLength = pinLengthParam === "6" ? 6 : 4;
 
   const user = useQuery(
     api.users.getMeForPin,
-    firebaseSessionReady ? {} : "skip"
+    !isPhonePinLogin && firebaseHasUser ? {} : "skip"
   );
   const verifyPin = useMutation(api.users.verifyPin);
+  const verifyPinWithPhone = useMutation(api.users.verifyPinWithPhone);
+  const completeTrustedDeviceLogin = useMutation(
+    api.users.completeTrustedDeviceLogin
+  );
 
   const [pin, setPin] = useState("");
   const [attempts, setAttempts] = useState(0);
   const [verifying, setVerifying] = useState(false);
+  const [biometricAvailable, setBiometricAvailable] = useState(false);
+  const [biometricPrompting, setBiometricPrompting] = useState(false);
+  const [phonePinSessionReady, setPhonePinSessionReady] = useState(!isPhonePinLogin);
+  const [phonePinSessionError, setPhonePinSessionError] = useState<string | null>(null);
+  const [currentDeviceId, setCurrentDeviceId] = useState<string | null>(null);
   const shakeAnim = useRef(new Animated.Value(0)).current;
 
-  const pinLength = user?.pinLength ?? 4;
+  const pinLength = isPhonePinLogin ? phonePinLength : user?.pinLength ?? 4;
+  const biometricLabel = Platform.OS === "ios" ? "Face ID" : "Biometrics";
+  const biometricActionLabel = Platform.OS === "ios" ? "Use Face ID" : "Use Biometrics";
 
   useEffect(() => {
     if (user?.pinLockedUntil && user.pinLockedUntil > Date.now()) {
@@ -58,6 +79,51 @@ export default function VerifyPinScreen() {
     }
   }, [user?.pinLockedUntil, router]);
 
+  useEffect(() => {
+    if (!isPhonePinLogin) return;
+    let active = true;
+    setPhonePinSessionReady(false);
+    setPhonePinSessionError(null);
+
+    void (async () => {
+      try {
+        const deviceId = await getOrCreateDeviceFingerprint();
+        if (!active) return;
+        setCurrentDeviceId(deviceId);
+
+        const firebaseUser = await ensureFirebaseSession();
+        if (!active) return;
+        if (!firebaseUser) {
+          setPhonePinSessionError(
+            "Unable to start secure session. Please verify with OTP."
+          );
+          return;
+        }
+        const token = await waitForFirebaseToken();
+        if (!active) return;
+        if (!token) {
+          setPhonePinSessionError(
+            "Unable to start secure session. Please verify with OTP."
+          );
+          return;
+        }
+        setPhonePinSessionReady(true);
+      } catch (error) {
+        if (__DEV__) {
+          console.warn("Phone PIN session bootstrap failed:", error);
+        }
+        if (!active) return;
+        setPhonePinSessionError(
+          "Unable to start secure session. Please verify with OTP."
+        );
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [isPhonePinLogin]);
+
   const shake = () => {
     Animated.sequence([
       Animated.timing(shakeAnim, { toValue: 15, duration: 50, useNativeDriver: true }),
@@ -77,8 +143,145 @@ export default function VerifyPinScreen() {
     return null;
   };
 
+  const completeSignIn = useCallback(async () => {
+    if (!user) return false;
+    const firebaseToken = await waitForFirebaseToken();
+    if (!firebaseToken) {
+      Alert.alert(
+        "Session Error",
+        "Could not establish an authenticated session. Please verify with OTP again.",
+        [{ text: "Go to Login", onPress: () => router.replace("/(auth)/login") }]
+      );
+      return false;
+    }
+
+    await SecureStoreHelper.storeUserId(user._id);
+    if (user.phone) {
+      await SecureStoreHelper.storePhone(user.phone);
+    } else if (phoneValue.length > 0) {
+      await SecureStoreHelper.storePhone(phoneValue);
+    }
+    await SecureStoreHelper.storePinLength(String(pinLength));
+    await SecureStoreHelper.setSetupComplete();
+    setAuthenticated(user._id, user.phone || phoneValue || "");
+    setPinCreated();
+    router.replace("/(app)/(tabs)/home");
+    return true;
+  }, [phoneValue, pinLength, router, setAuthenticated, setPinCreated, user]);
+
+  const completePhonePinSignIn = useCallback(
+    async (session: { userId: string; pinLength?: number; phone?: string | null }) => {
+      await SecureStoreHelper.storeUserId(session.userId);
+      const resolvedPhone = session.phone || phoneValue;
+      if (resolvedPhone) {
+        await SecureStoreHelper.storePhone(resolvedPhone);
+      }
+      await SecureStoreHelper.storePinLength(
+        String(session.pinLength === 6 ? 6 : phonePinLength)
+      );
+      await SecureStoreHelper.setSetupComplete();
+      setAuthenticated(session.userId, resolvedPhone || "");
+      setPinCreated();
+      router.replace("/(app)/(tabs)/home");
+    },
+    [phonePinLength, phoneValue, router, setAuthenticated, setPinCreated]
+  );
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      const [enabled, hasHardware, isEnrolled] = await Promise.all([
+        SecureStoreHelper.isFaceIdEnabled(),
+        LocalAuthentication.hasHardwareAsync(),
+        LocalAuthentication.isEnrolledAsync(),
+      ]);
+      if (!active) return;
+      setBiometricAvailable(enabled && hasHardware && isEnrolled);
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const handleBiometricSignIn = useCallback(async () => {
+    if (!biometricAvailable || biometricPrompting) return;
+    setBiometricPrompting(true);
+    try {
+      const result = await LocalAuthentication.authenticateAsync({
+        promptMessage:
+          Platform.OS === "ios"
+            ? "Verify with Face ID"
+            : "Verify with biometrics",
+        disableDeviceFallback: true,
+        fallbackLabel: "Use PIN",
+        cancelLabel: "Use PIN",
+      });
+      if (result.success) {
+        if (isPhonePinLogin) {
+          if (!currentDeviceId) {
+            Alert.alert(
+              "Verify with OTP",
+              "This device needs OTP verification before biometric login."
+            );
+            return;
+          }
+
+          const trustedLoginResult = await completeTrustedDeviceLogin({
+            phone: phoneValue,
+            deviceId: currentDeviceId,
+          });
+          if (trustedLoginResult.success && trustedLoginResult.userId) {
+            await completePhonePinSignIn({
+              userId: trustedLoginResult.userId,
+              pinLength: trustedLoginResult.pinLength,
+              phone: trustedLoginResult.phone,
+            });
+            return;
+          }
+
+          Alert.alert(
+            "Verification Required",
+            "Please verify with OTP and create a new PIN for this device.",
+            [
+              {
+                text: "Verify with OTP",
+                onPress: () =>
+                  router.replace({
+                    pathname: "/(auth)/login",
+                    params: { resetPin: "true" },
+                  }),
+              },
+            ]
+          );
+          return;
+        }
+
+        await completeSignIn();
+      }
+    } catch (error) {
+      if (__DEV__) {
+        console.warn("Biometric sign-in failed:", error);
+      }
+    } finally {
+      setBiometricPrompting(false);
+    }
+  }, [
+    biometricAvailable,
+    biometricPrompting,
+    completePhonePinSignIn,
+    completeSignIn,
+    completeTrustedDeviceLogin,
+    currentDeviceId,
+    isPhonePinLogin,
+    phoneValue,
+    router,
+  ]);
+
   const handleDigitPress = async (digit: string) => {
-    if (!user || verifying || !user.hasPin) return;
+    if (verifying) return;
+    if (!isPhonePinLogin && (!user || !user.hasPin)) return;
+    if (isPhonePinLogin && !phoneValue) return;
     if (pin.length >= pinLength) return;
 
     const newPin = pin + digit;
@@ -87,30 +290,92 @@ export default function VerifyPinScreen() {
     if (newPin.length === pinLength) {
       setVerifying(true);
       try {
-        const result = await verifyPin({ pin: newPin });
-        if (result.success) {
-          const firebaseToken = await waitForFirebaseToken();
-          if (!firebaseToken) {
+        if (isPhonePinLogin) {
+          if (!currentDeviceId) {
             Alert.alert(
-              "Session Error",
-              "Could not establish an authenticated session. Please verify with OTP again.",
-              [{ text: "Go to Login", onPress: () => router.replace("/(auth)/login") }]
+              "Verify with OTP",
+              "This device needs OTP verification before PIN login.",
+              [
+                {
+                  text: "Verify with OTP",
+                  onPress: () =>
+                    router.replace({
+                      pathname: "/(auth)/login",
+                      params: { resetPin: "true" },
+                    }),
+                },
+              ]
             );
-            setPin("");
             return;
           }
 
-          await SecureStoreHelper.storeUserId(user._id);
-          if (user.phone) {
-            await SecureStoreHelper.storePhone(user.phone);
-          } else if (typeof phone === "string" && phone.length > 0) {
-            await SecureStoreHelper.storePhone(phone);
+          const result = await verifyPinWithPhone({
+            phone: phoneValue,
+            pin: newPin,
+            deviceId: currentDeviceId,
+          });
+
+          if (result.success && result.userId) {
+            await completePhonePinSignIn({
+              userId: result.userId,
+              pinLength: result.pinLength,
+              phone: result.phone,
+            });
+            return;
           }
-          await SecureStoreHelper.storePinLength(String(pinLength));
-          await SecureStoreHelper.setSetupComplete();
-          setAuthenticated(user._id, user.phone || phone || "");
-          setPinCreated();
-          router.replace("/(app)/(tabs)/home");
+
+          if (result.deviceMismatch) {
+            Alert.alert(
+              "Verification Required",
+              "Please verify with OTP and create a new PIN for this device.",
+              [
+                {
+                  text: "Verify with OTP",
+                  onPress: () =>
+                    router.replace({
+                      pathname: "/(auth)/login",
+                      params: { resetPin: "true" },
+                    }),
+                },
+              ]
+            );
+            return;
+          }
+
+          shake();
+          const attemptsFromServer =
+            typeof result.attemptsMade === "number"
+              ? result.attemptsMade
+              : typeof result.maxAttempts === "number" &&
+                  typeof result.remainingAttempts === "number"
+                ? Math.max(0, result.maxAttempts - result.remainingAttempts)
+                : undefined;
+          const newAttempts = attemptsFromServer ?? attempts + 1;
+          setAttempts(newAttempts);
+          setTimeout(() => setPin(""), 300);
+
+          if (result.locked || newAttempts >= MAX_PIN_ATTEMPTS) {
+            Alert.alert(
+              "Too Many Attempts",
+              "Please verify your identity with OTP.",
+              [{
+                text: "Verify with OTP",
+                onPress: () => router.replace({
+                  pathname: "/(auth)/login",
+                  params: { resetPin: "true" },
+                }),
+              }]
+            );
+          }
+          return;
+        }
+
+        const result = await verifyPin({ pin: newPin });
+        if (result.success) {
+          const signedIn = await completeSignIn();
+          if (!signedIn) {
+            setPin("");
+          }
         } else {
           shake();
           const attemptsFromServer =
@@ -163,7 +428,56 @@ export default function VerifyPinScreen() {
     if (!verifying) setPin(pin.slice(0, -1));
   };
 
-  if (!firebaseSessionReady) {
+  if (!phoneValue) {
+    return (
+      <View className="flex-1 bg-ios-bg items-center justify-center px-6">
+        <Text className="text-ios-grey4 text-center">
+          Phone number missing. Please start login again.
+        </Text>
+        <TouchableOpacity
+          onPress={() => router.replace("/(auth)/login")}
+          className="mt-4"
+        >
+          <Text className="text-primary text-sm font-medium">Go to Login</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  if (isPhonePinLogin && !phonePinSessionReady) {
+    return (
+      <View className="flex-1 bg-ios-bg items-center justify-center px-6">
+        <ActivityIndicator size="large" color="#0A84FF" />
+        <Text className="text-ios-grey4 mt-4 text-center">
+          {phonePinSessionError || "Preparing secure session..."}
+        </Text>
+        {phonePinSessionError ? (
+          <TouchableOpacity
+            onPress={() =>
+              router.replace({
+                pathname: "/(auth)/login",
+                params: { resetPin: "true" },
+              })
+            }
+            className="mt-4"
+          >
+            <Text className="text-primary text-sm font-medium">Verify with OTP</Text>
+          </TouchableOpacity>
+        ) : null}
+      </View>
+    );
+  }
+
+  if (!isPhonePinLogin && !firebaseReady) {
+    return (
+      <View className="flex-1 bg-ios-bg items-center justify-center">
+        <ActivityIndicator size="large" color="#0A84FF" />
+        <Text className="text-ios-grey4 mt-4">Loading session...</Text>
+      </View>
+    );
+  }
+
+  if (!isPhonePinLogin && !firebaseHasUser) {
     return (
       <View className="flex-1 bg-ios-bg items-center justify-center px-6">
         <Text className="text-ios-grey4 text-center">
@@ -179,7 +493,7 @@ export default function VerifyPinScreen() {
     );
   }
 
-  if (user === undefined) {
+  if (!isPhonePinLogin && user === undefined) {
     return (
       <View className="flex-1 bg-ios-bg items-center justify-center">
         <ActivityIndicator size="large" color="#0A84FF" />
@@ -188,7 +502,7 @@ export default function VerifyPinScreen() {
     );
   }
 
-  if (!user) {
+  if (!isPhonePinLogin && !user) {
     return (
       <View className="flex-1 bg-ios-bg items-center justify-center px-6">
         <Text className="text-ios-grey4 text-center">
@@ -219,7 +533,7 @@ export default function VerifyPinScreen() {
             <Text className="text-ios-grey4 text-sm mt-2 text-center">
               Enter your PIN to continue
             </Text>
-            <Text className="text-primary text-xs mt-1">{phone}</Text>
+            <Text className="text-primary text-xs mt-1">{phoneValue}</Text>
           </View>
 
           {/* PIN dots */}
@@ -276,6 +590,20 @@ export default function VerifyPinScreen() {
               </View>
             ))}
           </View>
+
+          {biometricAvailable ? (
+            <TouchableOpacity
+              onPress={() => void handleBiometricSignIn()}
+              className="items-center mt-2"
+              disabled={biometricPrompting}
+            >
+              <Text className="text-primary text-sm font-medium">
+                {biometricPrompting
+                  ? `${biometricLabel} in progress...`
+                  : biometricActionLabel}
+              </Text>
+            </TouchableOpacity>
+          ) : null}
 
           {/* Use OTP instead */}
           <TouchableOpacity

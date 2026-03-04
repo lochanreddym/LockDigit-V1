@@ -1,5 +1,7 @@
 import * as SecureStore from "expo-secure-store";
 
+export type DarkModePreference = "light" | "dark" | "system";
+
 const KEYS = {
   PIN_HASH: "lockdigit_pin_hash",
   PIN_SALT: "lockdigit_pin_salt",
@@ -12,7 +14,21 @@ const KEYS = {
   HAS_COMPLETED_SETUP: "lockdigit_setup_complete",
   FACE_ID_ENABLED: "lockdigit_face_id_enabled",
   DARK_MODE: "lockdigit_dark_mode",
+  PUSH_NOTIFICATIONS_ENABLED: "lockdigit_push_notifications_enabled",
+  SECURITY_ALERTS_ENABLED: "lockdigit_security_alerts_enabled",
+  TWO_FACTOR_ENABLED: "lockdigit_two_factor_enabled",
 } as const;
+
+const SESSION_KEYS_TO_CLEAR = [
+  KEYS.PIN_HASH,
+  KEYS.PIN_SALT,
+  KEYS.PIN_LENGTH,
+  KEYS.DOCUMENT_ENCRYPTION_KEY,
+  KEYS.AUTH_TOKEN,
+  KEYS.USER_ID,
+  KEYS.PHONE,
+  KEYS.HAS_COMPLETED_SETUP,
+] as const;
 
 export async function setItem(key: string, value: string): Promise<void> {
   await SecureStore.setItemAsync(key, value);
@@ -119,12 +135,43 @@ export async function isFaceIdEnabled(): Promise<boolean> {
 }
 
 // Dark mode preference: "light" | "dark" | "system"
-export async function getDarkModePreference(): Promise<string> {
-  return (await getItem(KEYS.DARK_MODE)) ?? "system";
+export async function getDarkModePreference(): Promise<DarkModePreference> {
+  const value = await getItem(KEYS.DARK_MODE);
+  if (value === "light" || value === "dark" || value === "system") {
+    return value;
+  }
+  return "system";
 }
 
-export async function setDarkModePreference(value: string): Promise<void> {
+export async function setDarkModePreference(value: DarkModePreference): Promise<void> {
   await setItem(KEYS.DARK_MODE, value);
+}
+
+export async function getPushNotificationsEnabled(): Promise<boolean> {
+  const value = await getItem(KEYS.PUSH_NOTIFICATIONS_ENABLED);
+  return value !== "false";
+}
+
+export async function setPushNotificationsEnabled(enabled: boolean): Promise<void> {
+  await setItem(KEYS.PUSH_NOTIFICATIONS_ENABLED, enabled ? "true" : "false");
+}
+
+export async function getSecurityAlertsEnabled(): Promise<boolean> {
+  const value = await getItem(KEYS.SECURITY_ALERTS_ENABLED);
+  return value !== "false";
+}
+
+export async function setSecurityAlertsEnabled(enabled: boolean): Promise<void> {
+  await setItem(KEYS.SECURITY_ALERTS_ENABLED, enabled ? "true" : "false");
+}
+
+export async function getTwoFactorEnabled(): Promise<boolean> {
+  const value = await getItem(KEYS.TWO_FACTOR_ENABLED);
+  return value === "true";
+}
+
+export async function setTwoFactorEnabled(enabled: boolean): Promise<void> {
+  await setItem(KEYS.TWO_FACTOR_ENABLED, enabled ? "true" : "false");
 }
 
 // Clear all
@@ -132,6 +179,11 @@ export async function clearAll(): Promise<void> {
   await Promise.all(
     Object.values(KEYS).map((key) => deleteItem(key))
   );
+}
+
+// Clears only auth/session data while preserving local device + preference settings.
+export async function clearSession(): Promise<void> {
+  await Promise.all(SESSION_KEYS_TO_CLEAR.map((key) => deleteItem(key)));
 }
 
 export { KEYS };

@@ -53,6 +53,8 @@
     </dict>
     <key>NSCameraUsageDescription</key>
     <string>Allow LockDigit to access your camera for scanning documents and QR codes.</string>
+    <key>NSContactsUsageDescription</key>
+    <string>Allow LockDigit to access your contacts to send money quickly.</string>
     <key>NSFaceIDUsageDescription</key>
     <string>Allow $(PRODUCT_NAME) to access your Face ID biometric data.</string>
     <key>NSMicrophoneUsageDescription</key>

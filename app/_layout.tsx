@@ -6,7 +6,7 @@ import { Stack } from "expo-router";
 import * as SecureStoreHelper from "@/lib/secure-store";
 import { ConvexProvider, ConvexReactClient } from "convex/react";
 import { StripeProvider } from "@/lib/stripe-native";
-import { getFirebaseToken } from "@/lib/firebase";
+import { getFirebaseToken, subscribeAuthState } from "@/lib/firebase";
 import { StatusBar } from "expo-status-bar";
 import * as SplashScreen from "expo-splash-screen";
 import { useAppStateLock } from "@/hooks/useAppState";
@@ -70,11 +70,26 @@ function AppContent() {
 
 export default function RootLayout() {
   useEffect(() => {
-    convex.setAuth(async () => {
-      return await getFirebaseToken();
+    const applyAuth = () =>
+      convex.setAuth(async () => {
+        try {
+          return await getFirebaseToken();
+        } catch (error) {
+          if (__DEV__) {
+            console.warn("Convex auth token fetch failed:", error);
+          }
+          return null;
+        }
+      });
+
+    // Initialize Convex auth and refresh it whenever Firebase auth state changes.
+    applyAuth();
+    const unsubscribe = subscribeAuthState(() => {
+      applyAuth();
     });
 
     return () => {
+      unsubscribe();
       convex.clearAuth();
     };
   }, []);

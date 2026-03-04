@@ -18,7 +18,7 @@ import { useFirebaseSessionReady } from "@/hooks/useFirebaseSessionReady";
 
 export default function SearchScreen() {
   const router = useRouter();
-  const firebaseSessionReady = useFirebaseSessionReady();
+  const { hasUser: firebaseHasUser } = useFirebaseSessionReady();
 
   const [query, setQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<"all" | "documents" | "bills">(
@@ -32,21 +32,21 @@ export default function SearchScreen() {
 
   const documentResults = useQuery(
     api.documents.searchMine,
-    firebaseSessionReady && query.length >= 2
+    firebaseHasUser && query.length >= 2
       ? { searchQuery: query }
       : "skip"
   );
 
   const billResults = useQuery(
     api.bills.searchMine,
-    firebaseSessionReady && query.length >= 2
+    firebaseHasUser && query.length >= 2
       ? { searchQuery: query }
       : "skip"
   );
 
   const searchRequested = query.length >= 2;
-  const waitingForSession = searchRequested && !firebaseSessionReady;
-  const isSearching = searchRequested && firebaseSessionReady;
+  const waitingForSession = searchRequested && !firebaseHasUser;
+  const isSearching = searchRequested && firebaseHasUser;
   const documentsLoaded = !isSearching || documentResults !== undefined;
   const billsLoaded = !isSearching || billResults !== undefined;
   const isLoading = isSearching && (!documentsLoaded || !billsLoaded);

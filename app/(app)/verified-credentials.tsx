@@ -40,7 +40,7 @@ const typeLabels: Record<string, string> = {
 export default function VerifiedCredentialsScreen() {
   const router = useRouter();
   const convex = useConvex();
-  const firebaseSessionReady = useFirebaseSessionReady();
+  const { hasUser: firebaseHasUser } = useFirebaseSessionReady();
   const { width: screenWidth } = useWindowDimensions();
 
   const [qrDoc, setQrDoc] = useState<any>(null);
@@ -49,11 +49,11 @@ export default function VerifiedCredentialsScreen() {
 
   const user = useQuery(
     api.users.getMe,
-    firebaseSessionReady ? {} : "skip"
+    firebaseHasUser ? {} : "skip"
   );
   const verifiedDocs = useQuery(
     api.documents.listVerifiedMine,
-    firebaseSessionReady ? { _refreshHint: refreshHint } : "skip"
+    firebaseHasUser ? { _refreshHint: refreshHint } : "skip"
   );
   const { frontImageUris } = useResolvedDocumentImages(verifiedDocs);
   const setMainDocument = useMutation(api.users.setMainDocumentMe);

@@ -158,7 +158,11 @@ npm run typecheck
 npm run lint
 npm run test
 npm run security:secrets
-npm run security:deps
+Fix the following issues. The issues can be from different files or can overlap on same lines in one file.
+
+- Verify each finding against the current code and only fix it if needed.
+
+In @app/pin-lock.tsx around lines 197 - 200, The onPress handler for the pin-clear button should mirror the redirect effect by ensuring navigation happens even if SecureStoreHelper.clearAll() throws; wrap the await SecureStoreHelper.clearAll() call in a try/finally (or try/catch/finally) inside the onPress async function and call router.replace("/(auth)/login") in the finally block so the user is always redirected; update the anonymous onPress async handler that currently calls SecureStoreHelper.clearAll() and router.replace to use this pattern and optionally log any caught error.npm run security:deps
 npm run resilience:inject:webhooks -- --dry-run
 npm run beta:evidence -- --skip-checks
 npx convex run ops:getAlertSnapshot
